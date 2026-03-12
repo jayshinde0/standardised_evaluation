@@ -4,10 +4,17 @@ from typing import List, Dict, Any
 import json
 import re
 import logging
+import os
+import httpx
 
 logger = logging.getLogger(__name__)
 
 client = Cerebras(api_key="csk-5dfr98efhr3dh8nexcdwvfdcyp2fv934xy3ctp6phy6j9jvy")
+
+# Image generation API configuration
+# Using a free image generation API (you can replace with your preferred service)
+IMAGE_API_KEY = os.getenv("IMAGE_API_KEY", "")  # Optional: Add to .env if using paid service
+IMAGE_API_URL = "https://api.limewire.com/api/image/generation"  # Example API
 
 
 def _extract_json(text: str):
@@ -103,6 +110,52 @@ async def generate_iq_test(grade_level: int = 5) -> List[Dict[str, Any]]:
     ]
 
 
+async def _generate_emotional_insight_image(analysis_text: str) -> str | None:
+    """
+    Generate an emotionally attaching image based on the analysis text.
+    Returns the image URL or None if generation fails.
+    This function is designed to be non-blocking and fail-safe.
+    """
+    try:
+        # Extract emotional theme from analysis for better image generation
+        image_prompt = f"""Create a warm, uplifting, and culturally appropriate illustration for an Indian school student's emotional and social progress report. 
+The image should convey: empathy, growth, learning, and positive emotional development. 
+Style: Soft colors, friendly, encouraging, suitable for children aged 6-18.
+Theme: {analysis_text[:200]}"""
+
+        # Using a simple text-to-image approach
+        # You can replace this with any image generation API (DALL-E, Stable Diffusion, etc.)
+        
+        # Option 1: Using a placeholder service (replace with actual API)
+        # For demonstration, we'll create a placeholder URL
+        # In production, you would call an actual image generation API
+        
+        # Example with hypothetical API call:
+        # async with httpx.AsyncClient(timeout=30.0) as http_client:
+        #     response = await http_client.post(
+        #         IMAGE_API_URL,
+        #         headers={"Authorization": f"Bearer {IMAGE_API_KEY}"},
+        #         json={"prompt": image_prompt, "style": "illustration"}
+        #     )
+        #     if response.status_code == 200:
+        #         data = response.json()
+        #         return data.get("image_url")
+        
+        # For now, return a placeholder that represents emotional growth
+        # Replace this with actual API integration
+        logger.info("Image generation requested for emotional insight")
+        
+        # Placeholder: Using a free illustration service URL
+        # In production, replace with actual generated image URL
+        placeholder_url = "https://via.placeholder.com/800x400/4F46E5/FFFFFF?text=Emotional+Growth+Journey"
+        
+        return placeholder_url
+        
+    except Exception as e:
+        logger.warning(f"Image generation failed: {e}")
+        return None
+
+
 async def generate_parent_report(apaar_id: str, test_results: List[Dict], student_profile: Dict) -> Dict[str, Any]:
     """Analyze test results and generate a comprehensive parent report with SEL remedies"""
 
@@ -159,6 +212,20 @@ Output JSON keys (exact):
         report.setdefault("Data_Analysis", "")
         report.setdefault("Sub_grouping_Recommendation", "")
         report.setdefault("Progress_Tracking", "")
+        
+        # Generate emotional insight image and append to Data_Analysis
+        analysis_text = report.get("Data_Analysis", "")
+        if analysis_text:
+            try:
+                image_url = await _generate_emotional_insight_image(analysis_text)
+                if image_url:
+                    # Append image in Markdown format to the analysis text
+                    report["Data_Analysis"] = f"{analysis_text}\n\n![Emotional Insight]({image_url})"
+                    logger.info("Successfully appended emotional insight image to report")
+            except Exception as e:
+                # Fail silently - if image generation fails, return original text
+                logger.warning(f"Failed to append image to report: {e}")
+        
         return report
     return {
         "Data_Analysis": str(content)[:2000] if content else "Report could not be generated.",

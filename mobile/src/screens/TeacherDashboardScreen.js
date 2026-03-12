@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,10 +8,12 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { teacherAPI } from '../api/client';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as XLSX from 'xlsx';
+import { colors, spacing, borderRadius, typography, shadows, glassCard } from '../styles/theme';
 
 export default function TeacherDashboardScreen({ navigation }) {
   const [students, setStudents] = useState([]);
@@ -156,11 +158,17 @@ export default function TeacherDashboardScreen({ navigation }) {
     <TouchableOpacity
       style={styles.studentCard}
       onPress={() => navigation.navigate('UploadPhysical', { student: item })}
+      activeOpacity={0.7}
     >
-      <View>
+      <View style={styles.studentAvatar}>
+        <Text style={styles.studentAvatarText}>
+          {item.full_name.charAt(0).toUpperCase()}
+        </Text>
+      </View>
+      <View style={styles.studentInfo}>
         <Text style={styles.studentName}>{item.full_name}</Text>
-        <Text style={styles.studentInfo}>APAAR ID: {item.apaar_id}</Text>
-        <Text style={styles.studentInfo}>Grade: {item.grade}</Text>
+        <Text style={styles.studentDetail}>APAAR ID: {item.apaar_id}</Text>
+        <Text style={styles.studentDetail}>Grade: {item.grade}</Text>
       </View>
       <Text style={styles.arrow}>→</Text>
     </TouchableOpacity>
@@ -169,35 +177,45 @@ export default function TeacherDashboardScreen({ navigation }) {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Student Directory</Text>
-        <Text style={styles.subtitle}>Select a student to upload physical test data</Text>
+      <LinearGradient
+        colors={[colors.primary, colors.primaryDark]}
+        style={styles.headerGradient}
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>Student Directory</Text>
+          <Text style={styles.subtitle}>Select a student to upload physical test data</Text>
 
-        <TouchableOpacity
-          style={[styles.excelButton, uploading && styles.buttonDisabled]}
-          onPress={uploadBulkFromExcel}
-          disabled={uploading}
-        >
-          <Text style={styles.excelButtonText}>
-            {uploading ? 'Uploading Excel...' : 'Upload Physical Data from Excel'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={[styles.excelButton, uploading && styles.buttonDisabled]}
+            onPress={uploadBulkFromExcel}
+            disabled={uploading}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.excelButtonText}>
+              {uploading ? '⏳ Uploading...' : '📊 Upload from Excel'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
 
       <FlatList
         data={students}
         renderItem={renderStudent}
         keyExtractor={(item) => item.apaar_id}
         contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>No students found</Text>
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyIcon}>👥</Text>
+            <Text style={styles.emptyText}>No students found</Text>
+          </View>
         }
       />
     </View>
@@ -207,81 +225,103 @@ export default function TeacherDashboardScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+  headerGradient: {
+    paddingTop: spacing.xxl + spacing.md,
+    paddingBottom: spacing.xl,
   },
   header: {
-    backgroundColor: '#007AFF',
-    padding: 20,
-    paddingTop: 60,
+    paddingHorizontal: spacing.lg,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 5,
+    ...typography.h1,
+    color: colors.white,
+    marginBottom: spacing.xs,
   },
   subtitle: {
-    fontSize: 14,
-    color: '#fff',
+    ...typography.bodySmall,
+    color: colors.white,
     opacity: 0.9,
+    marginBottom: spacing.md,
   },
   excelButton: {
-    marginTop: 14,
-    backgroundColor: '#fff',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 10,
+    backgroundColor: colors.white,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.md,
     alignSelf: 'flex-start',
+    ...shadows.small,
   },
   excelButtonText: {
-    color: '#007AFF',
-    fontSize: 13,
+    ...typography.bodySmall,
+    color: colors.primary,
     fontWeight: '700',
   },
   buttonDisabled: {
-    opacity: 0.7,
+    opacity: 0.6,
   },
   listContent: {
-    padding: 20,
+    padding: spacing.lg,
   },
   studentCard: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 10,
-    marginBottom: 15,
+    ...glassCard,
+    backgroundColor: colors.white,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  studentName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 5,
+  studentAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.md,
+  },
+  studentAvatarText: {
+    ...typography.h2,
+    color: colors.white,
   },
   studentInfo: {
-    fontSize: 14,
-    color: '#666',
+    flex: 1,
+  },
+  studentName: {
+    ...typography.body,
+    color: colors.textPrimary,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+  },
+  studentDetail: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
     marginBottom: 2,
   },
   arrow: {
-    fontSize: 24,
-    color: '#007AFF',
+    ...typography.h2,
+    color: colors.primary,
+  },
+  emptyCard: {
+    ...glassCard,
+    backgroundColor: colors.white,
+    padding: spacing.xxl,
+    alignItems: 'center',
+    marginTop: spacing.xl,
+  },
+  emptyIcon: {
+    fontSize: 64,
+    marginBottom: spacing.md,
   },
   emptyText: {
-    fontSize: 16,
-    color: '#999',
-    textAlign: 'center',
-    marginTop: 50,
+    ...typography.h3,
+    color: colors.textPrimary,
   },
 });

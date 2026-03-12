@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,15 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Dimensions,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { PieChart, BarChart } from 'react-native-chart-kit';
 import { parentAPI } from '../api/client';
+import { colors, spacing, borderRadius, typography, shadows, card, iconSizes } from '../styles/theme';
+
+const screenWidth = Dimensions.get('window').width;
 
 export default function ParentDashboardScreen({ navigation }) {
   const [profile, setProfile] = useState(null);
@@ -37,199 +44,463 @@ export default function ParentDashboardScreen({ navigation }) {
 
   const getTestTypeColor = (type) => {
     switch (type) {
-      case 'eq': return '#4CAF50';
-      case 'iq': return '#2196F3';
-      case 'physical': return '#FF9800';
-      default: return '#999';
+      case 'eq': return colors.eq;
+      case 'iq': return colors.iq;
+      case 'physical': return colors.physical;
+      default: return colors.textTertiary;
     }
+  };
+
+  const getTestIcon = (testType) => {
+    switch (testType) {
+      case 'eq': return { name: 'brain', component: MaterialCommunityIcons };
+      case 'iq': return { name: 'bulb', component: Ionicons };
+      case 'physical': return { name: 'fitness', component: Ionicons };
+      default: return { name: 'document-text', component: Ionicons };
+    }
+  };
+
+  // Prepare chart data
+  const getChartData = () => {
+    const testTypeCounts = testResults.reduce((acc, result) => {
+      acc[result.test_type] = (acc[result.test_type] || 0) + 1;
+      return acc;
+    }, {});
+
+    const pieData = Object.entries(testTypeCounts).map(([type, count]) => ({
+      name: type.toUpperCase(),
+      count,
+      color: getTestTypeColor(type),
+      legendFontColor: colors.textSecondary,
+      legendFontSize: 12,
+    }));
+
+    return pieData;
+  };
+
+  const getScoreChartData = () => {
+    const recentTests = testResults
+      .filter(r => r.score !== null && r.score !== undefined)
+      .slice(0, 6)
+      .reverse();
+
+    if (recentTests.length === 0) return null;
+
+    return {
+      labels: recentTests.map((r, i) => `T${i + 1}`),
+      datasets: [{
+        data: recentTests.map(r => r.score || 0),
+      }],
+    };
   };
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
+  const pieData = getChartData();
+  const scoreData = getScoreChartData();
+
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.greeting}>Your Child's Progress</Text>
-        <Text style={styles.childName}>{profile?.full_name || 'Student'}</Text>
-        <Text style={styles.apaarId}>APAAR ID: {profile?.apaar_id}</Text>
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Test Results</Text>
-          <Text style={styles.resultCount}>{testResults.length} tests</Text>
-        </View>
-        
-        {testResults.length > 0 ? (
-          testResults.map((result, index) => (
-            <View key={index} style={styles.resultCard}>
-              <View style={styles.resultHeader}>
-                <View style={[styles.badge, { backgroundColor: getTestTypeColor(result.test_type) }]}>
-                  <Text style={styles.badgeText}>{result.test_type.toUpperCase()}</Text>
-                </View>
-                <Text style={styles.resultDate}>
-                  {new Date(result.test_date).toLocaleDateString()}
-                </Text>
-              </View>
-              {result.score && (
-                <Text style={styles.score}>Score: {result.score.toFixed(1)}%</Text>
-              )}
-              {result.notes && (
-                <Text style={styles.notes}>{result.notes}</Text>
-              )}
+    <View style={styles.container}>
+      <LinearGradient
+        colors={[colors.primary, colors.primaryDark]}
+        style={styles.headerGradient}
+      >
+        <View style={styles.header}>
+          <View style={styles.headerTop}>
+            <View>
+              <Text style={styles.greeting}>Child's Progress</Text>
+              <Text style={styles.childName}>{profile?.full_name || 'Student'}</Text>
             </View>
-          ))
-        ) : (
-          <Text style={styles.emptyText}>No test results available</Text>
+            <TouchableOpacity style={styles.notificationButton}>
+              <Ionicons name="notifications-outline" size={iconSizes.lg} color={colors.white} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.idBadge}>
+            <Ionicons name="card-outline" size={16} color={colors.white} />
+            <Text style={styles.apaarId}>APAAR ID: {profile?.apaar_id}</Text>
+          </View>
+        </View>
+      </LinearGradient>
+
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Test Distribution Chart */}
+        {pieData.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="pie-chart-outline" size={iconSizes.md} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Test Distribution</Text>
+            </View>
+            <View style={styles.chartCard}>
+              <PieChart
+                data={pieData}
+                width={screenWidth - spacing.xl * 4}
+                height={200}
+                chartConfig={{
+                  color: (opacity = 1) => `rgba(30, 58, 138, ${opacity})`,
+                }}
+                accessor="count"
+                backgroundColor="transparent"
+                paddingLeft="15"
+                absolute
+              />
+            </View>
+          </View>
         )}
-      </View>
 
-      <View style={styles.section}>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => navigation.navigate('Remedies')}
-        >
-          <Text style={styles.actionButtonText}>View Suggested Activities</Text>
-        </TouchableOpacity>
-      </View>
+        {/* Score Trend Chart */}
+        {scoreData && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="trending-up-outline" size={iconSizes.md} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Recent Score Trend</Text>
+            </View>
+            <View style={styles.chartCard}>
+              <BarChart
+                data={scoreData}
+                width={screenWidth - spacing.xl * 4}
+                height={200}
+                chartConfig={{
+                  backgroundColor: colors.surface,
+                  backgroundGradientFrom: colors.surface,
+                  backgroundGradientTo: colors.surface,
+                  decimalPlaces: 0,
+                  color: (opacity = 1) => `rgba(30, 58, 138, ${opacity})`,
+                  labelColor: (opacity = 1) => colors.textSecondary,
+                  style: {
+                    borderRadius: borderRadius.md,
+                  },
+                  propsForLabels: {
+                    fontSize: 11,
+                  },
+                }}
+                style={{
+                  borderRadius: borderRadius.md,
+                }}
+                fromZero
+                yAxisSuffix="%"
+                showValuesOnTopOfBars
+              />
+            </View>
+          </View>
+        )}
 
-      <View style={styles.section}>
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={() => navigation.navigate('QuizHistory')}
-        >
-          <Text style={styles.secondaryButtonText}>View Quiz History</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+        {/* Test Results List */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="document-text-outline" size={iconSizes.md} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Test Results</Text>
+            {testResults.length > 0 && (
+              <View style={styles.countBadge}>
+                <Text style={styles.countBadgeText}>{testResults.length}</Text>
+              </View>
+            )}
+          </View>
+          
+          {testResults.length > 0 ? (
+            testResults.map((result, index) => {
+              const iconInfo = getTestIcon(result.test_type);
+              const IconComponent = iconInfo.component;
+              const testColor = getTestTypeColor(result.test_type);
+              
+              return (
+                <View key={index} style={styles.resultCard}>
+                  <View style={styles.resultHeader}>
+                    <View style={styles.resultLeft}>
+                      <View style={[styles.testBadge, { backgroundColor: testColor + '15' }]}>
+                        <IconComponent name={iconInfo.name} size={iconSizes.lg} color={testColor} />
+                      </View>
+                      <View>
+                        <Text style={styles.testBadgeText}>{result.test_type.toUpperCase()}</Text>
+                        <View style={styles.dateRow}>
+                          <Ionicons name="calendar-outline" size={12} color={colors.textTertiary} />
+                          <Text style={styles.resultDate}>
+                            {new Date(result.test_date).toLocaleDateString()}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    {result.score && (
+                      <View style={styles.scoreContainer}>
+                        <Text style={styles.score}>{result.score.toFixed(0)}%</Text>
+                      </View>
+                    )}
+                  </View>
+                  {result.notes && (
+                    <Text style={styles.notes}>{result.notes}</Text>
+                  )}
+                </View>
+              );
+            })
+          ) : (
+            <View style={styles.emptyCard}>
+              <View style={styles.emptyIconContainer}>
+                <Ionicons name="bar-chart-outline" size={iconSizes.xxl} color={colors.textTertiary} />
+              </View>
+              <Text style={styles.emptyText}>No test results yet</Text>
+              <Text style={styles.emptySubtext}>Results will appear here once tests are completed</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Action Buttons */}
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('Remedies')}
+            activeOpacity={0.7}
+          >
+            <LinearGradient
+              colors={[colors.secondary, colors.secondaryDark]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.actionButtonGradient}
+            >
+              <View style={styles.actionIconContainer}>
+                <Ionicons name="bulb-outline" size={iconSizes.md} color={colors.white} />
+              </View>
+              <View style={styles.actionTextContainer}>
+                <Text style={styles.actionButtonText}>Suggested Activities</Text>
+                <Text style={styles.actionButtonSubtext}>View personalized recommendations</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={iconSizes.md} color={colors.white} />
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => navigation.navigate('QuizHistory')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="time-outline" size={iconSizes.md} color={colors.primary} />
+            <Text style={styles.secondaryButtonText}>View Quiz History</Text>
+            <Ionicons name="chevron-forward" size={iconSizes.md} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+  headerGradient: {
+    paddingTop: spacing.xxxl + spacing.xl,
+    paddingBottom: spacing.xl,
   },
   header: {
-    backgroundColor: '#007AFF',
-    padding: 20,
-    paddingTop: 60,
+    paddingHorizontal: spacing.xl,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.md,
   },
   greeting: {
-    fontSize: 18,
-    color: '#fff',
+    ...typography.body,
+    color: colors.white,
     opacity: 0.9,
-    marginBottom: 5,
   },
   childName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 5,
+    ...typography.h1,
+    color: colors.white,
+    marginTop: spacing.xs,
+  },
+  notificationButton: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  idBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+    alignSelf: 'flex-start',
+    gap: spacing.sm,
   },
   apaarId: {
-    fontSize: 14,
-    color: '#fff',
-    opacity: 0.9,
+    ...typography.bodySmall,
+    color: colors.white,
+    fontWeight: '500',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  content: {
+    padding: spacing.xl,
   },
   section: {
-    padding: 20,
+    marginBottom: spacing.xxxl,
   },
   sectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: spacing.lg,
+    gap: spacing.sm,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
+    ...typography.h2,
+    color: colors.textPrimary,
+    flex: 1,
   },
-  resultCount: {
-    fontSize: 14,
-    color: '#666',
+  countBadge: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: borderRadius.full,
+    minWidth: 24,
+    alignItems: 'center',
+  },
+  countBadgeText: {
+    ...typography.caption,
+    color: colors.white,
+    fontWeight: '600',
+  },
+  chartCard: {
+    ...card,
+    padding: spacing.lg,
+    alignItems: 'center',
   },
   resultCard: {
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...card,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
   },
   resultHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
   },
-  badge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 5,
+  resultLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
   },
-  badgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+  testBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.md,
+  },
+  testBadgeText: {
+    ...typography.h4,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   resultDate: {
-    fontSize: 14,
-    color: '#666',
+    ...typography.caption,
+    color: colors.textTertiary,
+  },
+  scoreContainer: {
+    backgroundColor: colors.backgroundSecondary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
   },
   score: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 5,
+    ...typography.h3,
+    fontWeight: '700',
+    color: colors.primary,
   },
   notes: {
-    fontSize: 14,
-    color: '#666',
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    lineHeight: 20,
   },
-  actionButton: {
-    backgroundColor: '#4CAF50',
-    padding: 15,
-    borderRadius: 10,
+  emptyCard: {
+    ...card,
+    padding: spacing.xxxl,
     alignItems: 'center',
   },
-  actionButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  secondaryButton: {
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#007AFF',
-  },
-  secondaryButtonText: {
-    color: '#007AFF',
-    fontSize: 16,
-    fontWeight: '600',
+  emptyIconContainer: {
+    marginBottom: spacing.lg,
   },
   emptyText: {
-    fontSize: 16,
-    color: '#999',
+    ...typography.h3,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  emptySubtext: {
+    ...typography.body,
+    color: colors.textSecondary,
     textAlign: 'center',
-    marginTop: 20,
+  },
+  actionButton: {
+    borderRadius: borderRadius.md,
+    overflow: 'hidden',
+    ...shadows.sm,
+    marginBottom: spacing.md,
+  },
+  actionButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  actionIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.md,
+  },
+  actionTextContainer: {
+    flex: 1,
+  },
+  actionButtonText: {
+    ...typography.h4,
+    color: colors.white,
+    marginBottom: spacing.xs,
+  },
+  actionButtonSubtext: {
+    ...typography.bodySmall,
+    color: colors.white,
+    opacity: 0.9,
+  },
+  secondaryButton: {
+    ...card,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  secondaryButtonText: {
+    ...typography.h4,
+    color: colors.primary,
+    flex: 1,
   },
 });

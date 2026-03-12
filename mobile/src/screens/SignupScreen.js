@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,10 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { authAPI } from '../api/client';
+import { colors, spacing, borderRadius, typography, shadows } from '../styles/theme';
 
 export default function SignupScreen({ navigation }) {
   const [formData, setFormData] = useState({
@@ -62,86 +65,124 @@ export default function SignupScreen({ navigation }) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.title}>Create Account</Text>
+      <LinearGradient
+        colors={[colors.background, colors.backgroundSecondary]}
+        style={styles.gradient}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.headerContainer}>
+            <Text style={styles.title}>Create Account</Text>
+            <Text style={styles.subtitle}>Join us on your learning journey</Text>
+          </View>
 
-        <TextInput
-          style={styles.input}
-          placeholder="Full Name"
-          value={formData.full_name}
-          onChangeText={(text) => setFormData({ ...formData, full_name: text })}
-        />
+          <View style={styles.formContainer}>
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder="Full Name"
+                placeholderTextColor={colors.textLight}
+                value={formData.full_name}
+                onChangeText={(text) => setFormData({ ...formData, full_name: text })}
+              />
+            </View>
 
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          value={formData.email}
-          onChangeText={(text) => setFormData({ ...formData, email: text })}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder="Email"
+                placeholderTextColor={colors.textLight}
+                value={formData.email}
+                onChangeText={(text) => setFormData({ ...formData, email: text })}
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
+            </View>
 
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          value={formData.password}
-          onChangeText={(text) => setFormData({ ...formData, password: text })}
-          secureTextEntry
-        />
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder="Password"
+                placeholderTextColor={colors.textLight}
+                value={formData.password}
+                onChangeText={(text) => setFormData({ ...formData, password: text })}
+                secureTextEntry
+              />
+            </View>
 
-        <Text style={styles.label}>Select Role:</Text>
-        <View style={styles.roleContainer}>
-          {['student', 'teacher', 'parent'].map((role) => (
+            <Text style={styles.label}>Select Role</Text>
+            <View style={styles.roleContainer}>
+              {['student', 'teacher', 'parent'].map((role) => (
+                <TouchableOpacity
+                  key={role}
+                  style={[
+                    styles.roleButton,
+                    formData.role === role && styles.roleButtonActive,
+                  ]}
+                  onPress={() => setFormData({ ...formData, role })}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.roleButtonText,
+                      formData.role === role && styles.roleButtonTextActive,
+                    ]}
+                  >
+                    {role.charAt(0).toUpperCase() + role.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {(formData.role === 'student' || formData.role === 'parent') && (
+              <View style={styles.inputContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder={
+                    formData.role === 'student'
+                      ? 'Your APAAR ID'
+                      : "Child's APAAR ID (optional)"
+                  }
+                  placeholderTextColor={colors.textLight}
+                  value={formData.apaar_id}
+                  onChangeText={(text) => setFormData({ ...formData, apaar_id: text })}
+                />
+              </View>
+            )}
+
             <TouchableOpacity
-              key={role}
-              style={[
-                styles.roleButton,
-                formData.role === role && styles.roleButtonActive,
-              ]}
-              onPress={() => setFormData({ ...formData, role })}
+              style={[styles.button, loading && styles.buttonDisabled]}
+              onPress={handleSignup}
+              disabled={loading}
+              activeOpacity={0.8}
             >
-              <Text
-                style={[
-                  styles.roleButtonText,
-                  formData.role === role && styles.roleButtonTextActive,
-                ]}
+              <LinearGradient
+                colors={loading ? [colors.textLight, colors.textLight] : [colors.primary, colors.primaryDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.buttonGradient}
               >
-                {role.charAt(0).toUpperCase() + role.slice(1)}
+                {loading ? (
+                  <Text style={styles.buttonText}>Creating Account...</Text>
+                ) : (
+                  <>
+                    <Text style={styles.buttonText}>Sign Up</Text>
+                    <Ionicons name="arrow-forward-circle" size={24} color={colors.white} />
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.linkButton}
+              onPress={() => navigation.navigate('Login')}
+            >
+              <Text style={styles.linkText}>
+                Already have an account? <Text style={styles.linkTextBold}>Sign in</Text>
               </Text>
             </TouchableOpacity>
-          ))}
-        </View>
-
-        {(formData.role === 'student' || formData.role === 'parent') && (
-          <TextInput
-            style={styles.input}
-            placeholder={
-              formData.role === 'student'
-                ? 'Your APAAR ID'
-                : "Child's APAAR ID (optional)"
-            }
-            value={formData.apaar_id}
-            onChangeText={(text) => setFormData({ ...formData, apaar_id: text })}
-          />
-        )}
-
-        <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
-          onPress={handleSignup}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>
-            {loading ? 'Creating Account...' : 'Sign Up'}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.linkButton}
-          onPress={() => navigation.navigate('Login')}
-        >
-          <Text style={styles.linkText}>Already have an account? Login</Text>
-        </TouchableOpacity>
-      </ScrollView>
+          </View>
+        </ScrollView>
+      </LinearGradient>
     </KeyboardAvoidingView>
   );
 }
@@ -149,81 +190,102 @@ export default function SignupScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+  },
+  gradient: {
+    flex: 1,
   },
   scrollContent: {
-    padding: 20,
-    paddingTop: 60,
+    padding: spacing.lg,
+    paddingTop: spacing.xxl + spacing.lg,
+  },
+  headerContainer: {
+    marginBottom: spacing.xl,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 30,
-    textAlign: 'center',
+    ...typography.h1,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  subtitle: {
+    ...typography.body,
+    color: colors.textSecondary,
+  },
+  formContainer: {
+    gap: spacing.md,
+  },
+  inputContainer: {
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.md,
+    ...shadows.small,
   },
   input: {
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 15,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: '#ddd',
+    ...typography.body,
+    color: colors.textPrimary,
+    padding: spacing.md,
   },
   label: {
-    fontSize: 16,
-    color: '#333',
-    marginBottom: 10,
+    ...typography.bodySmall,
+    color: colors.textSecondary,
     fontWeight: '600',
+    marginTop: spacing.sm,
   },
   roleContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 20,
+    gap: spacing.sm,
   },
   roleButton: {
     flex: 1,
-    padding: 12,
-    borderRadius: 10,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.white,
     borderWidth: 2,
-    borderColor: '#ddd',
-    marginHorizontal: 5,
+    borderColor: colors.border,
     alignItems: 'center',
+    ...shadows.small,
   },
   roleButtonActive: {
-    borderColor: '#007AFF',
-    backgroundColor: '#007AFF',
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
   },
   roleButtonText: {
-    color: '#666',
-    fontSize: 14,
+    ...typography.bodySmall,
+    color: colors.textSecondary,
     fontWeight: '600',
   },
   roleButtonTextActive: {
-    color: '#fff',
+    color: colors.white,
   },
   button: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 10,
+    marginTop: spacing.md,
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+    ...shadows.md,
+  },
+  buttonGradient: {
+    paddingVertical: spacing.lg + 2,
+    paddingHorizontal: spacing.xl,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
+    justifyContent: 'center',
+    gap: spacing.md,
   },
   buttonDisabled: {
-    backgroundColor: '#ccc',
+    opacity: 0.6,
   },
   buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    ...typography.button,
+    color: colors.white,
   },
   linkButton: {
-    marginTop: 20,
+    marginTop: spacing.lg,
     alignItems: 'center',
   },
   linkText: {
-    color: '#007AFF',
-    fontSize: 14,
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
+  linkTextBold: {
+    color: colors.primary,
+    fontWeight: '600',
   },
 });

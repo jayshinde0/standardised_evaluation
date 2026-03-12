@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -10,10 +10,12 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { teacherAPI } from '../api/client';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as XLSX from 'xlsx';
+import { colors, spacing, borderRadius, typography, shadows, glassCard } from '../styles/theme';
 
 export default function UploadPhysicalScreen({ route, navigation }) {
   const { student } = route.params;
@@ -219,9 +221,10 @@ export default function UploadPhysicalScreen({ route, navigation }) {
           style={[styles.excelButton, loading && styles.buttonDisabled]}
           onPress={uploadFromExcel}
           disabled={loading}
+          activeOpacity={0.7}
         >
           <Text style={styles.excelButtonText}>
-            {loading ? 'Please wait...' : 'Upload from Excel (.xlsx)'}
+            {loading ? '⏳ Please wait...' : '📊 Upload from Excel (.xlsx)'}
           </Text>
         </TouchableOpacity>
 
@@ -311,10 +314,18 @@ export default function UploadPhysicalScreen({ route, navigation }) {
           style={[styles.button, loading && styles.buttonDisabled]}
           onPress={handleSubmit}
           disabled={loading}
+          activeOpacity={0.8}
         >
-          <Text style={styles.buttonText}>
-            {loading ? 'Uploading...' : 'Upload Data'}
-          </Text>
+          <LinearGradient
+            colors={loading ? [colors.textLight, colors.textLight] : [colors.primary, colors.primaryDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.buttonGradient}
+          >
+            <Text style={styles.buttonText}>
+              {loading ? 'Uploading...' : '✓ Upload Data'}
+            </Text>
+          </LinearGradient>
         </TouchableOpacity>
 
         {lastUpload && (
@@ -411,104 +422,106 @@ export default function UploadPhysicalScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background,
   },
   content: {
-    padding: 20,
-    paddingTop: 60,
+    padding: spacing.lg,
+    paddingTop: spacing.xxl + spacing.lg,
   },
   studentInfo: {
-    backgroundColor: '#007AFF',
-    padding: 20,
-    borderRadius: 10,
-    marginBottom: 30,
+    ...glassCard,
+    backgroundColor: colors.primary,
+    padding: spacing.lg,
+    marginBottom: spacing.xl,
   },
   studentName: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 5,
+    ...typography.h2,
+    color: colors.white,
+    marginBottom: spacing.xs,
   },
   studentDetail: {
-    fontSize: 14,
-    color: '#fff',
+    ...typography.bodySmall,
+    color: colors.white,
     opacity: 0.9,
     marginBottom: 2,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 20,
+    ...typography.h3,
+    color: colors.textPrimary,
+    marginBottom: spacing.lg,
   },
   label: {
-    fontSize: 16,
-    color: '#333',
-    marginBottom: 8,
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
     fontWeight: '600',
   },
   input: {
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 20,
-    fontSize: 16,
+    backgroundColor: colors.white,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.lg,
+    ...typography.body,
+    color: colors.textPrimary,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.border,
+    ...shadows.small,
   },
   textArea: {
     height: 100,
     textAlignVertical: 'top',
   },
   button: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 10,
+    borderRadius: borderRadius.md,
+    overflow: 'hidden',
+    marginTop: spacing.md,
+    ...shadows.medium,
+  },
+  buttonGradient: {
+    padding: spacing.md,
     alignItems: 'center',
-    marginTop: 10,
   },
   buttonDisabled: {
-    backgroundColor: '#ccc',
+    opacity: 0.6,
   },
   buttonText: {
-    color: '#fff',
-    fontSize: 16,
+    ...typography.body,
+    color: colors.white,
     fontWeight: '600',
   },
   excelButton: {
-    backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 10,
+    backgroundColor: colors.white,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#007AFF',
-    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    marginBottom: spacing.lg,
+    ...shadows.small,
   },
   excelButtonText: {
-    color: '#007AFF',
-    fontSize: 14,
+    ...typography.bodySmall,
+    color: colors.primary,
     fontWeight: '600',
   },
   summarySection: {
-    marginTop: 10,
+    marginTop: spacing.lg,
   },
   summaryTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
+    ...typography.body,
+    color: colors.textPrimary,
+    fontWeight: '600',
+    marginBottom: spacing.md,
   },
   summaryCard: {
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#eee',
+    ...glassCard,
+    backgroundColor: colors.white,
+    padding: spacing.md,
   },
   summaryRow: {
-    fontSize: 14,
-    color: '#555',
-    marginBottom: 4,
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
   },
   summaryLabel: {
     fontWeight: '600',
@@ -517,9 +530,9 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
   summaryAdvice: {
-    fontSize: 14,
-    color: '#555',
-    marginTop: 4,
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
     lineHeight: 20,
   },
 });

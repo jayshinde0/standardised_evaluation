@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,8 +8,10 @@ import {
   Alert,
   TouchableOpacity,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { studentAPI, parentAPI } from '../api/client';
+import { colors, spacing, borderRadius, typography, shadows, glassCard } from '../styles/theme';
 
 function formatDate(value) {
   if (!value) return '';
@@ -23,13 +25,22 @@ function formatDate(value) {
 function getBadgeColor(testType) {
   switch (testType) {
     case 'eq':
-      return '#4CAF50';
+      return colors.eq;
     case 'iq':
-      return '#2196F3';
+      return colors.iq;
     case 'physical':
-      return '#FF9800';
+      return colors.physical;
     default:
-      return '#999';
+      return colors.textLight;
+  }
+}
+
+function getTestIcon(testType) {
+  switch (testType) {
+    case 'eq': return '🧠';
+    case 'iq': return '💡';
+    case 'physical': return '💪';
+    default: return '📝';
   }
 }
 
@@ -60,170 +71,224 @@ export default function QuizHistoryScreen({ navigation }) {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Quiz History</Text>
+    <View style={styles.container}>
+      <LinearGradient
+        colors={[colors.primary, colors.primaryDark]}
+        style={styles.headerGradient}
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>Quiz History</Text>
+          <Text style={styles.subtitle}>{history.length} total records</Text>
+        </View>
+      </LinearGradient>
 
-      {history.length === 0 ? (
-        <Text style={styles.emptyText}>No quiz history available yet</Text>
-      ) : (
-        history.map((item) => {
-          const isAttempt = item.kind === 'quiz_attempt';
-          const isReport = item.kind === 'parent_report';
-          const testType = item.test_type;
-          const score =
-            typeof item.score === 'number' ? item.score : item?.score ? Number(item.score) : null;
-          const reportSummary =
-            item?.report?.Data_Analysis ||
-            item?.report?.report_summary;
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        {history.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyIcon}>📚</Text>
+            <Text style={styles.emptyText}>No quiz history yet</Text>
+            <Text style={styles.emptySubtext}>Your completed quizzes will appear here</Text>
+          </View>
+        ) : (
+          history.map((item) => {
+            const isAttempt = item.kind === 'quiz_attempt';
+            const isReport = item.kind === 'parent_report';
+            const testType = item.test_type;
+            const score =
+              typeof item.score === 'number' ? item.score : item?.score ? Number(item.score) : null;
+            const reportSummary =
+              item?.report?.Data_Analysis ||
+              item?.report?.report_summary;
 
-          return (
-            <TouchableOpacity
-              key={item._id}
-              style={styles.card}
-              onPress={() => navigation.navigate('QuizHistoryDetail', { item })}
-              activeOpacity={0.7}
-            >
-              <View style={styles.headerRow}>
-                <View
-                  style={[
-                    styles.badge,
-                    { backgroundColor: isAttempt ? getBadgeColor(testType) : '#7B1FA2' },
-                  ]}
-                >
-                  <Text style={styles.badgeText}>
-                    {isAttempt ? (testType || 'quiz').toUpperCase() : isReport ? 'REPORT' : 'ITEM'}
-                  </Text>
-                </View>
-                <Text style={styles.dateText}>{formatDate(item.created_at)}</Text>
-              </View>
-
-              {isAttempt && (
-                <>
-                  {score !== null && !Number.isNaN(score) && (
-                    <Text style={styles.primaryText}>Score: {score.toFixed(1)}%</Text>
-                  )}
-                  <Text style={styles.secondaryText}>
-                    Questions: {Array.isArray(item.questions) ? item.questions.length : 0}
-                  </Text>
-                  {reportSummary ? (
-                    <Text style={styles.previewText} numberOfLines={2}>
-                      Report &amp; remedies: {reportSummary}
+            return (
+              <TouchableOpacity
+                key={item._id}
+                style={styles.card}
+                onPress={() => navigation.navigate('QuizHistoryDetail', { item })}
+                activeOpacity={0.7}
+              >
+                <View style={styles.cardHeader}>
+                  <View style={[
+                    styles.iconBadge,
+                    { backgroundColor: isAttempt ? getBadgeColor(testType) : colors.primary }
+                  ]}>
+                    <Text style={styles.iconBadgeText}>
+                      {isAttempt ? getTestIcon(testType) : '📊'}
                     </Text>
-                  ) : null}
-                </>
-              )}
+                  </View>
+                  <View style={styles.cardHeaderText}>
+                    <Text style={styles.cardTitle}>
+                      {isAttempt ? (testType || 'quiz').toUpperCase() : 'REPORT'}
+                    </Text>
+                    <Text style={styles.cardDate}>{formatDate(item.created_at)}</Text>
+                  </View>
+                </View>
 
-              {isReport && (
-                <>
-                  {reportSummary ? (
-                    <>
-                      <Text style={styles.sectionLabel}>Summary</Text>
-                      <Text style={styles.secondaryText}>{reportSummary}</Text>
-                    </>
-                  ) : (
-                    <Text style={styles.secondaryText}>Report generated</Text>
-                  )}
-                </>
-              )}
-              <Text style={styles.tapHint}>Tap to view full analysis →</Text>
-            </TouchableOpacity>
-          );
-        })
-      )}
-    </ScrollView>
+                {isAttempt && (
+                  <>
+                    {score !== null && !Number.isNaN(score) && (
+                      <View style={styles.scoreRow}>
+                        <Text style={styles.scoreLabel}>Score:</Text>
+                        <Text style={styles.scoreValue}>{score.toFixed(1)}%</Text>
+                      </View>
+                    )}
+                    <Text style={styles.questionsText}>
+                      {Array.isArray(item.questions) ? item.questions.length : 0} questions
+                    </Text>
+                    {reportSummary && (
+                      <Text style={styles.previewText} numberOfLines={2}>
+                        {reportSummary}
+                      </Text>
+                    )}
+                  </>
+                )}
+
+                {isReport && reportSummary && (
+                  <Text style={styles.previewText} numberOfLines={3}>
+                    {reportSummary}
+                  </Text>
+                )}
+
+                <Text style={styles.tapHint}>Tap to view details →</Text>
+              </TouchableOpacity>
+            );
+          })
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  content: {
-    padding: 20,
-    paddingTop: 60,
+    backgroundColor: colors.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+  headerGradient: {
+    paddingTop: spacing.xxl + spacing.md,
+    paddingBottom: spacing.xl,
+  },
+  header: {
+    paddingHorizontal: spacing.lg,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 15,
+    ...typography.h1,
+    color: colors.white,
+    marginBottom: spacing.xs,
+  },
+  subtitle: {
+    ...typography.bodySmall,
+    color: colors.white,
+    opacity: 0.9,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  content: {
+    padding: spacing.lg,
+    paddingTop: spacing.md,
   },
   card: {
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...glassCard,
+    backgroundColor: colors.white,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
   },
-  headerRow: {
+  cardHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: spacing.md,
   },
-  badge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 5,
+  iconBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.md,
   },
-  badgeText: {
-    color: '#fff',
-    fontSize: 12,
+  iconBadgeText: {
+    fontSize: 24,
+  },
+  cardHeaderText: {
+    flex: 1,
+  },
+  cardTitle: {
+    ...typography.body,
+    color: colors.textPrimary,
     fontWeight: '600',
+    marginBottom: 2,
   },
-  dateText: {
-    fontSize: 13,
-    color: '#666',
+  cardDate: {
+    ...typography.caption,
+    color: colors.textSecondary,
   },
-  primaryText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 6,
+  scoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
   },
-  secondaryText: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
+  scoreLabel: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginRight: spacing.xs,
   },
-  sectionLabel: {
-    fontSize: 14,
+  scoreValue: {
+    ...typography.body,
+    color: colors.primary,
     fontWeight: '700',
-    color: '#333',
-    marginBottom: 6,
   },
-  emptyText: {
-    fontSize: 16,
-    color: '#999',
-    textAlign: 'center',
-    marginTop: 40,
-  },
-  tapHint: {
-    fontSize: 12,
-    color: '#007AFF',
-    marginTop: 8,
+  questionsText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
   },
   previewText: {
-    fontSize: 13,
-    color: '#555',
-    marginTop: 8,
-    lineHeight: 18,
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: spacing.sm,
+  },
+  tapHint: {
+    ...typography.caption,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  emptyCard: {
+    ...glassCard,
+    backgroundColor: colors.white,
+    padding: spacing.xxl,
+    alignItems: 'center',
+    marginTop: spacing.xl,
+  },
+  emptyIcon: {
+    fontSize: 64,
+    marginBottom: spacing.md,
+  },
+  emptyText: {
+    ...typography.h3,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  emptySubtext: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
 });
-

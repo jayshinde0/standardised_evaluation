@@ -449,12 +449,10 @@ async def generate_report(current_user: dict = Depends(get_current_user)):
     # Get student profile
     profile = await student_profiles_collection.find_one({"apaar_id": current_user["apaar_id"]})
     if not profile:
-        # fallback to user record if student profile isn't present
         profile = await users_collection.find_one({"apaar_id": current_user["apaar_id"]})
     if not profile:
         raise HTTPException(status_code=404, detail="Child profile not found")
 
-    # Compute age in years if date_of_birth exists
     try:
         dob = profile.get("date_of_birth")
         if dob:
@@ -465,37 +463,39 @@ async def generate_report(current_user: dict = Depends(get_current_user)):
     except Exception:
         pass
     
-    # Get all test results
     results = []
     async for result in test_results_collection.find({"apaar_id": current_user["apaar_id"]}):
         result["_id"] = str(result["_id"])
         results.append(result)
     
-    # Generate report using LLM
     report_data = await generate_parent_report(current_user["apaar_id"], results, profile)
     
-    # Save the remedy
     from datetime import datetime
+    now = datetime.utcnow()
     remedy_dict = {
         "apaar_id": current_user["apaar_id"],
-        "generated_at": datetime.utcnow(),
+        "generated_at": now.isoformat(),           # ✅ convert datetime to string
         "data_analysis": report_data["Data_Analysis"],
         "sub_grouping_recommendation": report_data["Sub_grouping_Recommendation"],
         "targeted_sel_activities": report_data["Targeted_SEL_Activities"],
         "progress_tracking": report_data["Progress_Tracking"],
-        "created_at": datetime.utcnow()
+        "created_at": now.isoformat()              # ✅ convert datetime to string
     }
-    remedy_insert = await actionable_remedies_collection.insert_one(remedy_dict)
+
+    # Use a separate dict with native datetime for MongoDB inserts
+    remedy_db_dict = {**remedy_dict, "generated_at": now, "created_at": now}
+    remedy_insert = await actionable_remedies_collection.insert_one(remedy_db_dict)
     
     child_user = await users_collection.find_one({"role": "student", "apaar_id": current_user["apaar_id"]})
     if not child_user:
-        child_user = await users_collection.find_one({ "email": current_user["email"] })
+        child_user = await users_collection.find_one({"email": current_user["email"]})
     child_email = child_user.get("email") if child_user else None
+
     await quiz_history_collection.insert_one({
         "kind": "parent_report",
         "child_email": child_email,
         "apaar_id": current_user["apaar_id"],
-        "actionable_remedy_id": str(remedy_insert.inserted_id),
+        "actionable_remedy_id": str(remedy_insert.inserted_id),  # ✅ already stringified
         "included_test_result_ids": [r.get("_id") for r in results if r.get("_id")],
         "report": {
             "Data_Analysis": report_data["Data_Analysis"],
@@ -503,9 +503,10 @@ async def generate_report(current_user: dict = Depends(get_current_user)):
             "Targeted_SEL_Activities": report_data["Targeted_SEL_Activities"],
             "Progress_Tracking": report_data["Progress_Tracking"],
         },
-        "created_at": datetime.utcnow(),
+        "created_at": now,
     })
     
+    remedy_dict["id"] = str(remedy_insert.inserted_id)  # ✅ add inserted ID as string
     return remedy_dict
 
 @app.get("/api/parent/remedies")
