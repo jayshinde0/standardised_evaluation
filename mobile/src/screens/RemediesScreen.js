@@ -71,66 +71,39 @@ export default function RemediesScreen() {
       {latestRemedy ? (
         <View style={styles.content}>
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Summary</Text>
-            <Text style={styles.summaryText}>{latestRemedy.report_summary}</Text>
+            <Text style={styles.cardTitle}>Summary Analysis</Text>
+            <Text style={styles.summaryText}>{latestRemedy.data_analysis}</Text>
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Strengths</Text>
-            {latestRemedy.strengths.map((strength, index) => (
-              <View key={index} style={styles.listItem}>
-                <Text style={styles.bullet}>✓</Text>
-                <Text style={styles.listText}>{strength}</Text>
-              </View>
-            ))}
+            <Text style={styles.cardTitle}>Sub-grouping Recommendation</Text>
+            <Text style={styles.summaryText}>
+              {latestRemedy.sub_grouping_recommendation}
+            </Text>
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Areas for Improvement</Text>
-            {latestRemedy.weaknesses.map((weakness, index) => (
-              <View key={index} style={styles.listItem}>
-                <Text style={styles.bullet}>•</Text>
-                <Text style={styles.listText}>{weakness}</Text>
-              </View>
-            ))}
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>EQ Competencies</Text>
-            {latestRemedy.eq_competencies.map((comp, index) => (
-              <View key={index} style={styles.competencyItem}>
-                <View style={styles.competencyHeader}>
-                  <Text style={styles.competencyName}>{comp.competency}</Text>
-                  <Text style={styles.competencyScore}>{comp.score}%</Text>
-                </View>
-                <View style={styles.progressBar}>
-                  <View style={[styles.progressFill, { width: `${comp.score}%` }]} />
-                </View>
-                <Text style={styles.competencyDesc}>{comp.description}</Text>
-              </View>
-            ))}
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>SEL Activities</Text>
-            {latestRemedy.sel_activities.map((activity, index) => (
+            <Text style={styles.cardTitle}>Targeted SEL Activities</Text>
+            {latestRemedy.targeted_sel_activities.map((activity, index) => (
               <View key={index} style={styles.activityItem}>
-                <Text style={styles.activityTitle}>{activity.title}</Text>
-                <Text style={styles.activityDesc}>{activity.description}</Text>
-                <Text style={styles.activityDuration}>Duration: {activity.duration}</Text>
+                <Text style={styles.activityTitle}>
+                  {activity.title || activity.name || `Activity ${index + 1}`}
+                </Text>
+                {activity.description && (
+                  <Text style={styles.activityDesc}>{activity.description}</Text>
+                )}
+                {activity.duration && (
+                  <Text style={styles.activityDuration}>
+                    Duration: {activity.duration}
+                  </Text>
+                )}
               </View>
             ))}
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Cognitive Exercises</Text>
-            {latestRemedy.cognitive_exercises.map((exercise, index) => (
-              <View key={index} style={styles.activityItem}>
-                <Text style={styles.activityTitle}>{exercise.title}</Text>
-                <Text style={styles.activityDesc}>{exercise.description}</Text>
-                <Text style={styles.activityDuration}>Duration: {exercise.duration}</Text>
-              </View>
-            ))}
+            <Text style={styles.cardTitle}>Progress Tracking</Text>
+            <Text style={styles.summaryText}>{latestRemedy.progress_tracking}</Text>
           </View>
         </View>
       ) : (

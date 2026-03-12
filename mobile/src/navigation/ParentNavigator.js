@@ -6,6 +6,7 @@ import { AuthContext } from '../context/AuthContext';
 import ParentDashboardScreen from '../screens/ParentDashboardScreen';
 import RemediesScreen from '../screens/RemediesScreen';
 import QuizHistoryScreen from '../screens/QuizHistoryScreen';
+import QuizHistoryDetailScreen from '../screens/QuizHistoryDetailScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -22,6 +23,11 @@ function DashboardStack() {
         name="QuizHistory"
         component={QuizHistoryScreen}
         options={{ title: 'Quiz History' }}
+      />
+      <Stack.Screen
+        name="QuizHistoryDetail"
+        component={QuizHistoryDetailScreen}
+        options={{ title: 'Quiz analysis' }}
       />
       <Stack.Screen 
         name="Remedies" 

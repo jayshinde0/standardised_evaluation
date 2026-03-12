@@ -94,6 +94,9 @@ export const teacherAPI = {
   
   uploadPhysicalTest: (data) => 
     apiClient.post('/teacher/upload-physical-test', data),
+
+  uploadPhysicalTestsBulk: (items) =>
+    apiClient.post('/teacher/upload-physical-tests-bulk', { items }),
 };
 
 export const parentAPI = {

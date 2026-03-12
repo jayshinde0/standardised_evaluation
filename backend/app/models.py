@@ -67,12 +67,10 @@ class EQCompetency(BaseModel):
 class ActionableRemedy(BaseModel):
     apaar_id: str
     generated_at: datetime = Field(default_factory=datetime.utcnow)
-    report_summary: str
-    strengths: List[str]
-    weaknesses: List[str]
-    eq_competencies: List[EQCompetency]
-    sel_activities: List[Dict[str, str]]  # {"title": "...", "description": "...", "duration": "..."}
-    cognitive_exercises: List[Dict[str, str]]
+    data_analysis: str
+    sub_grouping_recommendation: str
+    targeted_sel_activities: List[Dict[str, Any]]
+    progress_tracking: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class PhysicalTestInput(BaseModel):
@@ -80,4 +78,30 @@ class PhysicalTestInput(BaseModel):
     bmi: Optional[float] = None
     fitness_score: Optional[float] = None
     health_notes: Optional[str] = None
+    height_cm: Optional[float] = None
+    weight_kg: Optional[float] = None
+    resting_heart_rate: Optional[float] = None
+    systolic_bp: Optional[float] = None
+    diastolic_bp: Optional[float] = None
+    sleep_hours: Optional[float] = None
     additional_metrics: Optional[Dict[str, Any]] = None
+
+class PhysicalBulkItem(BaseModel):
+    # Primary identifiers (either one can be provided per row)
+    email: Optional[EmailStr] = None
+    apaar_id: Optional[str] = None
+
+    # All optional physical parameters
+    bmi: Optional[float] = None
+    fitness_score: Optional[float] = None
+    health_notes: Optional[str] = None
+    height_cm: Optional[float] = None
+    weight_kg: Optional[float] = None
+    resting_heart_rate: Optional[float] = None
+    systolic_bp: Optional[float] = None
+    diastolic_bp: Optional[float] = None
+    sleep_hours: Optional[float] = None
+    additional_metrics: Optional[Dict[str, Any]] = None
+
+class PhysicalBulkUploadRequest(BaseModel):
+    items: List[PhysicalBulkItem]

@@ -6,17 +6,24 @@ from datetime import timedelta
 from typing import List, Optional
 from app.config import settings
 from app.database import (
-    users_collection, student_profiles_collection, 
-    test_results_collection, actionable_remedies_collection,
+    users_collection,
+    student_profiles_collection,
+    test_results_collection,
+    actionable_remedies_collection,
     quiz_history_collection,
-    create_indexes
+    create_indexes,
 )
 from app.models import (
     User, UserCreate, UserLogin, Token, StudentProfile,
-    TestResult, ActionableRemedy, PhysicalTestInput, UserRole, TestType
+    TestResult, ActionableRemedy, PhysicalTestInput, PhysicalBulkUploadRequest, UserRole, TestType
 )
 from app.auth import get_password_hash, verify_password, create_access_token, decode_access_token
-from app.llm_service import generate_eq_test, generate_parent_report
+from app.llm_service import (
+    generate_eq_test,
+    generate_parent_report,
+    generate_quiz_report_and_remedies,
+    generate_physical_advice,
+)
 from fastapi.responses import JSONResponse
 import logging
 
@@ -145,11 +152,25 @@ async def get_pending_tests(current_user: dict = Depends(get_current_user)):
 async def get_eq_test(current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "student":
         raise HTTPException(status_code=403, detail="Access denied")
-    
+
     profile = await student_profiles_collection.find_one({"apaar_id": current_user["apaar_id"]})
     grade = profile.get("grade", 5) if profile else 5
-    
-    questions = await generate_eq_test(grade)
+
+    try:
+        questions = await generate_eq_test(grade)
+    except Exception as e:
+        err_name = type(e).__name__
+        err_msg = str(e).lower()
+        if err_name == "RateLimitError" or "429" in err_msg or "rate" in err_msg or "too_many_requests" in err_msg or "high traffic" in err_msg:
+            raise HTTPException(
+                status_code=503,
+                detail="Service is busy. Please try again in a moment.",
+            )
+        logger.exception("generate-eq-test failed")
+        raise HTTPException(
+            status_code=502,
+            detail="Could not generate test. Please try again.",
+        )
     return {"questions": questions}
 
 @app.post("/api/student/submit-test")
@@ -165,7 +186,25 @@ async def submit_test(test_result: TestResult, current_user: dict = Depends(get_
     
     insert_result = await test_results_collection.insert_one(result_dict)
     from datetime import datetime
-    await quiz_history_collection.insert_one({
+
+    profile = await student_profiles_collection.find_one({"apaar_id": current_user["apaar_id"]})
+    if not profile:
+        profile = {"full_name": current_user.get("full_name", "Student"), "grade": None}
+
+    quiz_report = None
+    if result_dict.get("test_type") in ("eq", "iq") and result_dict.get("questions"):
+        try:
+            quiz_report = await generate_quiz_report_and_remedies(
+                result_dict.get("questions") or [],
+                result_dict.get("answers") or [],
+                result_dict.get("score"),
+                profile,
+            )
+        except Exception as e:
+            logger.exception("Per-quiz report generation failed: %s", e)
+            quiz_report = None
+
+    history_doc = {
         "kind": "quiz_attempt",
         "child_email": current_user["email"],
         "apaar_id": current_user["apaar_id"],
@@ -176,9 +215,27 @@ async def submit_test(test_result: TestResult, current_user: dict = Depends(get_
         "answers": result_dict.get("answers"),
         "score": result_dict.get("score"),
         "created_at": datetime.utcnow(),
-        "report": None,
-    })
-    
+        "report": quiz_report,
+    }
+    history_insert = await quiz_history_collection.insert_one(history_doc)
+
+    # If LLM failed before insert, try again with update
+    if not quiz_report and result_dict.get("questions"):
+        try:
+            quiz_report = await generate_quiz_report_and_remedies(
+                result_dict.get("questions") or [],
+                result_dict.get("answers") or [],
+                result_dict.get("score"),
+                profile,
+            )
+            if quiz_report:
+                await quiz_history_collection.update_one(
+                    {"_id": history_insert.inserted_id},
+                    {"$set": {"report": quiz_report}},
+                )
+        except Exception as e:
+            logger.exception("Per-quiz report retry failed: %s", e)
+
     return {"message": "Test submitted successfully"}
 
 @app.get("/api/student/quiz-history")
@@ -199,7 +256,7 @@ async def get_students(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Access denied")
     
     students = []
-    async for student in student_profiles_collection.find():
+    async for student in users_collection.find():
         student["_id"] = str(student["_id"])
         students.append(student)
     
@@ -211,21 +268,106 @@ async def upload_physical_test(data: PhysicalTestInput, current_user: dict = Dep
         raise HTTPException(status_code=403, detail="Access denied")
     
     from datetime import datetime
+    # Base physical metrics (all optional)
+    physical_metrics = {
+        "bmi": data.bmi,
+        "fitness_score": data.fitness_score,
+        "height_cm": data.height_cm,
+        "weight_kg": data.weight_kg,
+        "resting_heart_rate": data.resting_heart_rate,
+        "systolic_bp": data.systolic_bp,
+        "diastolic_bp": data.diastolic_bp,
+        "sleep_hours": data.sleep_hours,
+        "additional_metrics": data.additional_metrics,
+    }
+    # Remove nulls to keep documents clean
+    physical_metrics = {k: v for k, v in physical_metrics.items() if v is not None}
+
+    student_profile = await student_profiles_collection.find_one({"apaar_id": data.apaar_id}) or {}
+    advice = None
+    try:
+        advice = await generate_physical_advice(physical_metrics, student_profile, data.health_notes)
+    except Exception:
+        logger.exception("generate_physical_advice failed")
+        advice = None
+
     test_result_dict = {
         "apaar_id": data.apaar_id,
         "test_type": "physical",
         "test_date": datetime.utcnow(),
-        "physical_metrics": {
-            "bmi": data.bmi,
-            "fitness_score": data.fitness_score,
-            "additional_metrics": data.additional_metrics
-        },
+        "physical_metrics": physical_metrics,
         "notes": data.health_notes,
+        "physical_advice": advice,
         "created_at": datetime.utcnow()
     }
     
     await test_results_collection.insert_one(test_result_dict)
-    return {"message": "Physical test data uploaded successfully"}
+    return {"message": "Physical test data uploaded successfully", "physical_advice": advice}
+
+@app.post("/api/teacher/upload-physical-tests-bulk")
+async def upload_physical_tests_bulk(payload: PhysicalBulkUploadRequest, current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "teacher":
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    from datetime import datetime
+    inserted = 0
+    failed = 0
+    errors = []
+
+    for idx, item in enumerate(payload.items or []):
+        try:
+            email = item.email
+            apaar_id = item.apaar_id
+            if not email and not apaar_id:
+                failed += 1
+                errors.append({"row": idx + 1, "error": "Missing email or apaar_id"})
+                continue
+
+            if not apaar_id and email:
+                user = await users_collection.find_one({"email": email})
+                apaar_id = user.get("apaar_id") if user else None
+                if not apaar_id:
+                    failed += 1
+                    errors.append({"row": idx + 1, "error": f"No student found for email {email}"})
+                    continue
+
+            physical_metrics = {
+                "bmi": item.bmi,
+                "fitness_score": item.fitness_score,
+                "height_cm": item.height_cm,
+                "weight_kg": item.weight_kg,
+                "resting_heart_rate": item.resting_heart_rate,
+                "systolic_bp": item.systolic_bp,
+                "diastolic_bp": item.diastolic_bp,
+                "sleep_hours": item.sleep_hours,
+                "additional_metrics": item.additional_metrics,
+            }
+            physical_metrics = {k: v for k, v in physical_metrics.items() if v is not None}
+
+            student_profile = await student_profiles_collection.find_one({"apaar_id": apaar_id}) or {}
+            advice = None
+            try:
+                advice = await generate_physical_advice(physical_metrics, student_profile, item.health_notes)
+            except Exception:
+                logger.exception("generate_physical_advice failed in bulk")
+                advice = None
+
+            test_result_dict = {
+                "apaar_id": apaar_id,
+                "test_type": "physical",
+                "test_date": datetime.utcnow(),
+                "physical_metrics": physical_metrics,
+                "notes": item.health_notes,
+                "physical_advice": advice,
+                "created_at": datetime.utcnow(),
+            }
+            await test_results_collection.insert_one(test_result_dict)
+            inserted += 1
+        except Exception as e:
+            failed += 1
+            errors.append({"row": idx + 1, "error": str(e)})
+
+    return {"inserted": inserted, "failed": failed, "errors": errors[:50]}
 
 # Parent endpoints
 @app.get("/api/parent/child-profile")
@@ -233,7 +375,7 @@ async def get_child_profile(current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "parent":
         raise HTTPException(status_code=403, detail="Access denied")
     
-    profile = await student_profiles_collection.find_one({"apaar_id": current_user["apaar_id"]})
+    profile = await users_collection.find_one({"apaar_id": current_user["apaar_id"]})
     if not profile:
         raise HTTPException(status_code=404, detail="Child profile not found")
     
@@ -260,7 +402,21 @@ async def generate_report(current_user: dict = Depends(get_current_user)):
     # Get student profile
     profile = await student_profiles_collection.find_one({"apaar_id": current_user["apaar_id"]})
     if not profile:
+        # fallback to user record if student profile isn't present
+        profile = await users_collection.find_one({"apaar_id": current_user["apaar_id"]})
+    if not profile:
         raise HTTPException(status_code=404, detail="Child profile not found")
+
+    # Compute age in years if date_of_birth exists
+    try:
+        dob = profile.get("date_of_birth")
+        if dob:
+            from datetime import datetime
+            now = datetime.utcnow()
+            age_years = now.year - dob.year - ((now.month, now.day) < (dob.month, dob.day))
+            profile["age_years"] = max(age_years, 0)
+    except Exception:
+        pass
     
     # Get all test results
     results = []
@@ -276,12 +432,10 @@ async def generate_report(current_user: dict = Depends(get_current_user)):
     remedy_dict = {
         "apaar_id": current_user["apaar_id"],
         "generated_at": datetime.utcnow(),
-        "report_summary": report_data["report_summary"],
-        "strengths": report_data["strengths"],
-        "weaknesses": report_data["weaknesses"],
-        "eq_competencies": report_data["eq_competencies"],
-        "sel_activities": report_data["sel_activities"],
-        "cognitive_exercises": report_data["cognitive_exercises"],
+        "data_analysis": report_data["Data_Analysis"],
+        "sub_grouping_recommendation": report_data["Sub_grouping_Recommendation"],
+        "targeted_sel_activities": report_data["Targeted_SEL_Activities"],
+        "progress_tracking": report_data["Progress_Tracking"],
         "created_at": datetime.utcnow()
     }
     remedy_insert = await actionable_remedies_collection.insert_one(remedy_dict)
@@ -297,12 +451,10 @@ async def generate_report(current_user: dict = Depends(get_current_user)):
         "actionable_remedy_id": str(remedy_insert.inserted_id),
         "included_test_result_ids": [r.get("_id") for r in results if r.get("_id")],
         "report": {
-            "report_summary": report_data["report_summary"],
-            "strengths": report_data["strengths"],
-            "weaknesses": report_data["weaknesses"],
-            "eq_competencies": report_data["eq_competencies"],
-            "sel_activities": report_data["sel_activities"],
-            "cognitive_exercises": report_data["cognitive_exercises"],
+            "Data_Analysis": report_data["Data_Analysis"],
+            "Sub_grouping_Recommendation": report_data["Sub_grouping_Recommendation"],
+            "Targeted_SEL_Activities": report_data["Targeted_SEL_Activities"],
+            "Progress_Tracking": report_data["Progress_Tracking"],
         },
         "created_at": datetime.utcnow(),
     })

@@ -25,8 +25,16 @@ export default function TakeTestScreen({ route, navigation }) {
     try {
       if (testType === 'eq') {
         const response = await studentAPI.generateEQTest();
-        setQuestions(response.data.questions);
-        setAnswers(new Array(response.data.questions.length).fill(null));
+        const rawQuestions = response.data.questions || [];
+        const likertStudentQuestions = rawQuestions.filter(
+          (q) =>
+            q.response_type === 'Likert' &&
+            (q.target_audience || '').toLowerCase() === 'student'
+        );
+        const finalQuestions =
+          likertStudentQuestions.length > 0 ? likertStudentQuestions : rawQuestions;
+        setQuestions(finalQuestions);
+        setAnswers(new Array(finalQuestions.length).fill(null));
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to load test');
@@ -61,7 +69,6 @@ export default function TakeTestScreen({ route, navigation }) {
         test_type: testType,
         questions: questions,
         answers: answers,
-        score: calculateScore(),
       };
 
       await studentAPI.submitTest(testResult);
@@ -71,16 +78,6 @@ export default function TakeTestScreen({ route, navigation }) {
     } catch (error) {
       Alert.alert('Error', 'Failed to submit test');
     }
-  };
-
-  const calculateScore = () => {
-    let correct = 0;
-    questions.forEach((q, index) => {
-      if (answers[index] === q.correct_answer) {
-        correct++;
-      }
-    });
-    return (correct / questions.length) * 100;
   };
 
   if (loading) {
@@ -100,15 +97,18 @@ export default function TakeTestScreen({ route, navigation }) {
           Question {currentQuestion + 1} of {questions.length}
         </Text>
         <Text style={styles.competency}>
-          {question.category}: {question.competency}
+          {question.parameter_measured || 'Emotional Competency'}
         </Text>
       </View>
 
       <ScrollView style={styles.content}>
-        <Text style={styles.question}>{question.question}</Text>
+        <Text style={styles.question}>
+          {question.question_text || question.question}
+        </Text>
 
         <View style={styles.optionsContainer}>
-          {question.options.map((option, index) => (
+          {['Strongly disagree', 'Disagree', 'Neutral', 'Agree', 'Strongly agree'].map(
+            (option, index) => (
             <TouchableOpacity
               key={index}
               style={[

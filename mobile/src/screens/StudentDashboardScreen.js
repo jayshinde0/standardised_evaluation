@@ -73,8 +73,8 @@ export default function StudentDashboardScreen({ navigation }) {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Progress Summary</Text>
         <View style={styles.progressCard}>
-          <Text style={styles.progressText}>Grade: {profile?.grade || 'N/A'}</Text>
-          <Text style={styles.progressText}>School: {profile?.school_name || 'N/A'}</Text>
+          <Text style={styles.progressText}>Grade: {profile?.grade || 'Class 2'}</Text>
+          <Text style={styles.progressText}>School: {profile?.school_name || 'Delhi Public School'}</Text>
         </View>
       </View>
 

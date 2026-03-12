@@ -6,6 +6,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  TouchableOpacity,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { studentAPI, parentAPI } from '../api/client';
@@ -32,7 +33,7 @@ function getBadgeColor(testType) {
   }
 }
 
-export default function QuizHistoryScreen() {
+export default function QuizHistoryScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [history, setHistory] = useState([]);
 
@@ -77,10 +78,17 @@ export default function QuizHistoryScreen() {
           const testType = item.test_type;
           const score =
             typeof item.score === 'number' ? item.score : item?.score ? Number(item.score) : null;
-          const reportSummary = item?.report?.report_summary;
+          const reportSummary =
+            item?.report?.Data_Analysis ||
+            item?.report?.report_summary;
 
           return (
-            <View key={item._id} style={styles.card}>
+            <TouchableOpacity
+              key={item._id}
+              style={styles.card}
+              onPress={() => navigation.navigate('QuizHistoryDetail', { item })}
+              activeOpacity={0.7}
+            >
               <View style={styles.headerRow}>
                 <View
                   style={[
@@ -103,6 +111,11 @@ export default function QuizHistoryScreen() {
                   <Text style={styles.secondaryText}>
                     Questions: {Array.isArray(item.questions) ? item.questions.length : 0}
                   </Text>
+                  {reportSummary ? (
+                    <Text style={styles.previewText} numberOfLines={2}>
+                      Report &amp; remedies: {reportSummary}
+                    </Text>
+                  ) : null}
                 </>
               )}
 
@@ -118,7 +131,8 @@ export default function QuizHistoryScreen() {
                   )}
                 </>
               )}
-            </View>
+              <Text style={styles.tapHint}>Tap to view full analysis →</Text>
+            </TouchableOpacity>
           );
         })
       )}
@@ -199,6 +213,17 @@ const styles = StyleSheet.create({
     color: '#999',
     textAlign: 'center',
     marginTop: 40,
+  },
+  tapHint: {
+    fontSize: 12,
+    color: '#007AFF',
+    marginTop: 8,
+  },
+  previewText: {
+    fontSize: 13,
+    color: '#555',
+    marginTop: 8,
+    lineHeight: 18,
   },
 });
 
