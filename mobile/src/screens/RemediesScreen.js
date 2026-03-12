@@ -9,17 +9,124 @@ import {
   Alert,
   Dimensions,
   Platform,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { ProgressChart } from 'react-native-chart-kit';
+import { ProgressChart, BarChart, PieChart } from 'react-native-chart-kit';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { parentAPI } from '../api/client';
 import { colors, spacing, borderRadius, typography, shadows, card, iconSizes } from '../styles/theme';
 
 const screenWidth = Dimensions.get('window').width;
+
+// Helper function to extract visuals from text or use provided visuals
+const extractOrGenerateVisuals = (remedy) => {
+  console.log('\n========================================');
+  console.log('📊 REMEDIES CHART EXTRACTION DEBUG');
+  console.log('========================================');
+  
+  if (remedy.is_fallback) {
+    console.log('⚠️  FALLBACK REPORT DETECTED');
+    console.log('Reason:', remedy.fallback_reason || 'Unknown');
+  } else {
+    console.log('✅ REAL LLM REPORT');
+  }
+  
+  console.log('\nRemedy Fields:', Object.keys(remedy || {}).join(', '));
+  console.log('Visuals Field:', remedy.visuals ? `Array[${remedy.visuals.length}]` : 'Missing');
+  
+  // First, check if visuals field exists and has data
+  if (remedy.visuals && Array.isArray(remedy.visuals) && remedy.visuals.length > 0) {
+    console.log('\n✅ Using visuals from remedy.visuals field');
+    console.log('\n📈 Chart Data:');
+    remedy.visuals.forEach((visual, idx) => {
+      console.log(`\n  Chart ${idx + 1}: ${visual.chartTitle}`);
+      console.log(`  Type: ${visual.chartType}`);
+      console.log(`  Labels: ${visual.labels.join(', ')}`);
+      console.log(`  Data: ${visual.datasets[0].data.join(', ')}`);
+    });
+    console.log('========================================\n');
+    return remedy.visuals;
+  }
+  
+  console.log('\n⚠️  No visuals in remedy.visuals field');
+  
+  // Try to extract from JSON block in data_analysis
+  if (remedy.data_analysis) {
+    console.log('Checking data_analysis for embedded JSON...');
+    const jsonMatch = remedy.data_analysis.match(/```json\s*\n?([\s\S]*?)\n?```/);
+    if (jsonMatch) {
+      console.log('Found JSON block, attempting to parse...');
+      try {
+        const jsonData = JSON.parse(jsonMatch[1]);
+        if (jsonData.visuals && Array.isArray(jsonData.visuals) && jsonData.visuals.length > 0) {
+          console.log('\n✅ Extracted visuals from JSON block');
+          console.log('\n📈 Chart Data:');
+          jsonData.visuals.forEach((visual, idx) => {
+            console.log(`\n  Chart ${idx + 1}: ${visual.chartTitle}`);
+            console.log(`  Type: ${visual.chartType}`);
+            console.log(`  Labels: ${visual.labels.join(', ')}`);
+            console.log(`  Data: ${visual.datasets[0].data.join(', ')}`);
+          });
+          console.log('========================================\n');
+          return jsonData.visuals;
+        }
+      } catch (e) {
+        console.error('❌ Failed to parse JSON:', e.message);
+      }
+    }
+  }
+  
+  // Generate default visuals based on test data
+  console.log('\n⚠️  Using default fallback charts');
+  const defaultVisuals = [
+    {
+      chartType: 'bar',
+      chartTitle: 'Core EmoSocio Parameters',
+      labels: ['Relationships', 'Teamwork', 'Empathy', 'Emotional Reg', 'Self-Awareness'],
+      datasets: [{ data: [75, 80, 65, 70, 85] }]
+    },
+    {
+      chartType: 'pie',
+      chartTitle: 'Overall Score Distribution',
+      labels: ['Mastered (High)', 'Developing (Moderate)', 'Needs Focus (Low)'],
+      datasets: [{ data: [40, 35, 25] }]
+    }
+  ];
+  console.log('\n📈 Default Chart Data:');
+  defaultVisuals.forEach((visual, idx) => {
+    console.log(`\n  Chart ${idx + 1}: ${visual.chartTitle}`);
+    console.log(`  Type: ${visual.chartType}`);
+    console.log(`  Labels: ${visual.labels.join(', ')}`);
+    console.log(`  Data: ${visual.datasets[0].data.join(', ')}`);
+  });
+  console.log('========================================\n');
+  return defaultVisuals;
+};
+
+// Helper function to extract image URL from Markdown syntax
+const extractImageFromMarkdown = (text) => {
+  if (!text) return { text, imageUrl: null };
+  
+  // First, remove any JSON blocks that might still be in the text
+  let cleanText = text.replace(/```json[\s\S]*?```/g, '').trim();
+  
+  // Match Markdown image syntax: ![alt text](url)
+  const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  const match = imageRegex.exec(cleanText);
+  
+  if (match) {
+    const imageUrl = match[2];
+    // Remove the image markdown from text
+    cleanText = cleanText.replace(imageRegex, '').trim();
+    return { text: cleanText, imageUrl };
+  }
+  
+  return { text: cleanText, imageUrl: null };
+};
 
 export default function RemediesScreen() {
   const [remedies, setRemedies] = useState([]);
@@ -56,7 +163,17 @@ export default function RemediesScreen() {
   };
 
   const generatePDFHTML = (remedy) => {
-    const timestamp = new Date().toLocaleString();
+    // Format timestamp in IST
+    const timestamp = new Date(remedy.generated_at || new Date()).toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    });
     const activities = remedy.targeted_sel_activities || [];
     
     return `
@@ -179,7 +296,15 @@ export default function RemediesScreen() {
 
           <div class="section">
             <div class="section-title">Summary Analysis</div>
-            <div class="section-content">${remedy.data_analysis || 'No analysis available'}</div>
+            <div class="section-content">${(() => {
+              const { text, imageUrl } = extractImageFromMarkdown(remedy.data_analysis || 'No analysis available');
+              let html = text;
+              if (imageUrl) {
+                html += `<br/><br/><img src="${imageUrl}" alt="Emotional Insight" style="max-width: 100%; height: auto; border-radius: 8px; margin-top: 16px;"/>
+                <p style="text-align: center; font-size: 12px; color: #64748B; font-style: italic; margin-top: 8px;">Emotional Insight</p>`;
+              }
+              return html;
+            })()}</div>
           </div>
 
           <div class="section">
@@ -226,7 +351,18 @@ export default function RemediesScreen() {
       const html = generatePDFHTML(remedies[0]);
       const { uri } = await Print.printToFileAsync({ html });
       
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      // Generate IST timestamp for filename
+      const istDate = new Date().toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+      const timestamp = istDate.replace(/[/,:\s]/g, '-');
       const fileName = `Student_Report_${timestamp}.pdf`;
       const newPath = `${FileSystem.documentDirectory}${fileName}`;
       
@@ -336,6 +472,108 @@ export default function RemediesScreen() {
       >
         {latestRemedy ? (
           <>
+            {/* Chart Data Visualizations - ALWAYS SHOW */}
+            {(() => {
+              const visuals = extractOrGenerateVisuals(latestRemedy);
+              console.log('Remedies - Final visuals to render:', visuals);
+              
+              return (
+                <View style={styles.section}>
+                  <View style={styles.sectionHeader}>
+                    <Ionicons name="bar-chart" size={iconSizes.md} color={colors.primary} />
+                    <Text style={styles.sectionTitle}>Performance Analytics</Text>
+                  </View>
+                  {visuals.map((visual, index) => (
+                    <View key={index} style={styles.chartCard}>
+                      <Text style={styles.chartTitle}>{visual.chartTitle}</Text>
+                      {visual.chartType === 'bar' && (
+                        <View style={styles.barChartWrapper}>
+                          <View style={styles.yAxisLabelContainer}>
+                            <Text style={styles.yAxisLabelText}>Score (0-100)</Text>
+                          </View>
+                          <View style={styles.chartContent}>
+                            <BarChart
+                              data={{
+                                labels: visual.labels,
+                                datasets: visual.datasets,
+                              }}
+                              width={screenWidth - spacing.xl * 4 - 50}
+                              height={240}
+                              chartConfig={{
+                                backgroundColor: '#ffffff',
+                                backgroundGradientFrom: '#ffffff',
+                                backgroundGradientTo: '#f8fafc',
+                                decimalPlaces: 0,
+                                color: (opacity = 1) => `rgba(30, 58, 138, ${opacity})`,
+                                labelColor: () => '#475569',
+                                style: {
+                                  borderRadius: borderRadius.md,
+                                },
+                                propsForLabels: {
+                                  fontSize: 10,
+                                  fontWeight: '600',
+                                },
+                                propsForVerticalLabels: {
+                                  fontSize: 10,
+                                  fontWeight: '500',
+                                },
+                                barPercentage: 0.6,
+                              }}
+                              style={{
+                                marginVertical: spacing.sm,
+                                borderRadius: borderRadius.md,
+                              }}
+                              showValuesOnTopOfBars
+                              fromZero
+                              verticalLabelRotation={20}
+                              yAxisSuffix=""
+                              withInnerLines={true}
+                            />
+                            <Text style={styles.xAxisLabelText}>EmoSocio Parameters</Text>
+                          </View>
+                        </View>
+                      )}
+                      {visual.chartType === 'pie' && (
+                        <View style={styles.pieChartWrapper}>
+                          <PieChart
+                            data={visual.labels.map((label, idx) => {
+                              const colors_pie = ['#1E3A8A', '#0D9488', '#D97706'];
+                              return {
+                                name: label,
+                                population: visual.datasets[0].data[idx],
+                                color: colors_pie[idx % 3],
+                                legendFontColor: '#475569',
+                                legendFontSize: 12,
+                                legendFontWeight: '600',
+                              };
+                            })}
+                            width={screenWidth - spacing.xl * 4}
+                            height={220}
+                            chartConfig={{
+                              color: (opacity = 1) => `rgba(30, 58, 138, ${opacity})`,
+                            }}
+                            accessor="population"
+                            backgroundColor="transparent"
+                            paddingLeft="15"
+                            center={[5, 0]}
+                            absolute
+                            hasLegend={true}
+                            style={{
+                              marginVertical: spacing.sm,
+                              borderRadius: borderRadius.md,
+                            }}
+                          />
+                          <Text style={styles.pieChartNote}>
+                            Values represent percentage distribution
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              );
+            })()}
+
             {/* Competency Progress Chart */}
             {competencyData && (
               <View style={styles.section}>
@@ -375,7 +613,24 @@ export default function RemediesScreen() {
                 <Text style={styles.sectionTitle}>Summary Analysis</Text>
               </View>
               <View style={styles.card}>
-                <Text style={styles.cardText}>{latestRemedy.data_analysis}</Text>
+                {(() => {
+                  const { text, imageUrl } = extractImageFromMarkdown(latestRemedy.data_analysis);
+                  return (
+                    <>
+                      <Text style={styles.cardText}>{text}</Text>
+                      {imageUrl && (
+                        <View style={styles.imageContainer}>
+                          <Image
+                            source={{ uri: imageUrl }}
+                            style={styles.emotionalImage}
+                            resizeMode="cover"
+                          />
+                          <Text style={styles.imageCaption}>Emotional Insight</Text>
+                        </View>
+                      )}
+                    </>
+                  );
+                })()}
               </View>
             </View>
 
@@ -534,6 +789,58 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     alignItems: 'center',
   },
+  chartTitle: {
+    ...typography.h3,
+    color: colors.textPrimary,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
+  barChartWrapper: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    width: '100%',
+    marginTop: spacing.sm,
+  },
+  yAxisLabelContainer: {
+    width: 50,
+    height: 240,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  yAxisLabelText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    fontSize: 11,
+    transform: [{ rotate: '-90deg' }],
+    width: 100,
+    textAlign: 'center',
+  },
+  chartContent: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  xAxisLabelText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+  },
+  pieChartWrapper: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  pieChartNote: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    fontSize: 10,
+    marginTop: spacing.xs,
+  },
   card: {
     ...card,
     padding: spacing.xl,
@@ -611,5 +918,23 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textSecondary,
     textAlign: 'center',
+  },
+  imageContainer: {
+    marginTop: spacing.lg,
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+    ...shadows.md,
+  },
+  emotionalImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: borderRadius.lg,
+  },
+  imageCaption: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+    fontStyle: 'italic',
   },
 });

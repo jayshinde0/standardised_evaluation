@@ -79,13 +79,19 @@ export const studentAPI = {
     apiClient.get('/student/pending-tests'),
   
   generateEQTest: () => 
-    apiClient.post('/student/generate-eq-test'),
+    apiClient.post('/student/generate-eq-test', {}, {
+      timeout: 30000, // 30 seconds for test generation (LLM can be slow)
+    }),
   
   generateIQTest: () =>
-    apiClient.post('/student/generate-iq-test'),
+    apiClient.post('/student/generate-iq-test', {}, {
+      timeout: 30000, // 30 seconds for test generation (LLM can be slow)
+    }),
   
   submitTest: (testData) => 
-    apiClient.post('/student/submit-test', testData),
+    apiClient.post('/student/submit-test', testData, {
+      timeout: 30000, // 30 seconds for test submission (includes background report generation trigger)
+    }),
 
   getQuizHistory: () =>
     apiClient.get('/student/quiz-history'),
@@ -113,7 +119,9 @@ export const parentAPI = {
     apiClient.get('/parent/quiz-history'),
   
   generateReport: () => 
-    apiClient.post('/parent/generate-report'),
+    apiClient.post('/parent/generate-report', {}, {
+      timeout: 60000, // 60 seconds for report generation (LLM can be slow)
+    }),
   
   getRemedies: () => 
     apiClient.get('/parent/remedies'),

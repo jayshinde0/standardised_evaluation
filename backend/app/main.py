@@ -1,8 +1,9 @@
-from fastapi import FastAPI, HTTPException, Depends, status, Request
+import asyncio
+from fastapi import FastAPI, HTTPException, Depends, status, Request, BackgroundTasks
 from fastapi.exceptions import RequestValidationError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone
 from typing import List, Optional
 from app.config import settings
 from app.database import (
@@ -40,6 +41,88 @@ app.add_middleware(
 )
 
 security = HTTPBearer()
+
+# Helper function to get Indian Standard Time
+def get_ist_now():
+    """Get current time in Indian Standard Time (IST = UTC+5:30)"""
+    ist_offset = timezone(timedelta(hours=5, minutes=30))
+    return datetime.now(ist_offset)
+
+# Background task for generating parent report
+async def generate_parent_report_background(apaar_id: str, email: str):
+    """Background task to generate comprehensive parent report after test submission"""
+    try:
+        logger.info(f"[BACKGROUND TASK] Starting parent report generation for {apaar_id}")
+        
+        # Fetch student profile
+        profile = await student_profiles_collection.find_one({"apaar_id": apaar_id})
+        if not profile:
+            profile = {"full_name": "Student", "grade": None}
+            logger.warning(f"[BACKGROUND TASK] No profile found for {apaar_id}, using default")
+        else:
+            logger.info(f"[BACKGROUND TASK] Found profile for {apaar_id}")
+        
+        # Fetch all test results for this student
+        all_results = await test_results_collection.find(
+            {"apaar_id": apaar_id}
+        ).to_list(length=100)
+        logger.info(f"[BACKGROUND TASK] Found {len(all_results)} test results for {apaar_id}")
+        
+        if len(all_results) == 0:
+            logger.warning(f"[BACKGROUND TASK] No test results found for {apaar_id}, skipping report generation")
+            return
+        
+        # Generate comprehensive parent report with chart data
+        logger.info(f"[BACKGROUND TASK] Calling generate_parent_report for {apaar_id}")
+        parent_report = await generate_parent_report(
+            apaar_id=apaar_id,
+            test_results=all_results,
+            student_profile=profile
+        )
+        logger.info(f"[BACKGROUND TASK] Report generated successfully for {apaar_id}")
+        
+        # Store the report in actionable_remedies collection
+        report_doc = {
+            "apaar_id": apaar_id,
+            "generated_at": get_ist_now(),
+            "data_analysis": parent_report.get("Data_Analysis", ""),
+            "sub_grouping_recommendation": parent_report.get("Sub_grouping_Recommendation", ""),
+            "targeted_sel_activities": parent_report.get("Targeted_SEL_Activities", []),
+            "progress_tracking": parent_report.get("Progress_Tracking", ""),
+            "visuals": parent_report.get("visuals", []),
+            "competency_scores": {},
+            "created_at": get_ist_now(),
+        }
+        
+        remedy_insert = await actionable_remedies_collection.insert_one(report_doc)
+        logger.info(f"[BACKGROUND TASK] Stored report in actionable_remedies for {apaar_id}, ID: {remedy_insert.inserted_id}")
+        
+        # Also add to quiz_history for tracking
+        child_user = await users_collection.find_one({"role": "student", "apaar_id": apaar_id})
+        child_email = child_user.get("email") if child_user else email
+        
+        await quiz_history_collection.insert_one({
+            "kind": "parent_report",
+            "child_email": child_email,
+            "apaar_id": apaar_id,
+            "actionable_remedy_id": str(remedy_insert.inserted_id),
+            "included_test_result_ids": [str(r.get("_id")) for r in all_results if r.get("_id")],
+            "report": {
+                "Data_Analysis": parent_report.get("Data_Analysis", ""),
+                "Sub_grouping_Recommendation": parent_report.get("Sub_grouping_Recommendation", ""),
+                "Targeted_SEL_Activities": parent_report.get("Targeted_SEL_Activities", []),
+                "Progress_Tracking": parent_report.get("Progress_Tracking", ""),
+                "visuals": parent_report.get("visuals", []),
+            },
+            "created_at": get_ist_now(),
+        })
+        logger.info(f"[BACKGROUND TASK] Stored report in quiz_history for {apaar_id}")
+        
+        logger.info(f"[BACKGROUND TASK] ✅ Successfully completed parent report generation for {apaar_id}")
+        
+    except Exception as e:
+        # Log but don't fail - this is a background task
+        logger.exception(f"[BACKGROUND TASK] ❌ Failed to generate parent report for {apaar_id}: {e}")
 
 @app.on_event("startup")
 async def startup_event():
@@ -79,14 +162,13 @@ async def signup(user_data: UserCreate):
             raise HTTPException(status_code=400, detail="Email already registered")
         
         # Create user document
-        from datetime import datetime
         user_dict = {
             "email": user_data.email,
             "hashed_password": get_password_hash(user_data.password),
             "role": user_data.role.value if isinstance(user_data.role, UserRole) else user_data.role,
             "full_name": user_data.full_name,
             "apaar_id": user_data.apaar_id,
-            "created_at": datetime.utcnow()
+            "created_at": get_ist_now()
         }
         
         await users_collection.insert_one(user_dict)
@@ -158,7 +240,17 @@ async def get_eq_test(current_user: dict = Depends(get_current_user)):
     grade = profile.get("grade", 5) if profile else 5
 
     try:
-        questions = await generate_eq_test(grade)
+        # ✅ 60s hard timeout so the route never hangs and blocks other requests
+        questions = await asyncio.wait_for(
+            generate_eq_test(grade),
+            timeout=60.0
+        )
+    except asyncio.TimeoutError:
+        logger.warning("generate-eq-test timed out after 60s")
+        raise HTTPException(
+            status_code=503,
+            detail="Test generation timed out. Please try again.",
+        )
     except Exception as e:
         err_name = type(e).__name__
         err_msg = str(e).lower()
@@ -172,6 +264,13 @@ async def get_eq_test(current_user: dict = Depends(get_current_user)):
             status_code=502,
             detail="Could not generate test. Please try again.",
         )
+
+    if not questions:
+        raise HTTPException(
+            status_code=502,
+            detail="No questions were generated. Please try again.",
+        )
+
     return {"questions": questions}
 
 
@@ -196,7 +295,7 @@ async def get_iq_test(current_user: dict = Depends(get_current_user)):
     return {"questions": questions}
 
 @app.post("/api/student/submit-test")
-async def submit_test(test_result: TestResult, current_user: dict = Depends(get_current_user)):
+async def submit_test(test_result: TestResult, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "student":
         raise HTTPException(status_code=403, detail="Access denied")
     
@@ -232,7 +331,6 @@ async def submit_test(test_result: TestResult, current_user: dict = Depends(get_
             result_dict["score"] = round((correct / total) * 100.0, 1)
 
     insert_result = await test_results_collection.insert_one(result_dict)
-    from datetime import datetime
 
     profile = await student_profiles_collection.find_one({"apaar_id": current_user["apaar_id"]})
     if not profile:
@@ -261,7 +359,7 @@ async def submit_test(test_result: TestResult, current_user: dict = Depends(get_
         "questions": result_dict.get("questions"),
         "answers": result_dict.get("answers"),
         "score": result_dict.get("score"),
-        "created_at": datetime.utcnow(),
+        "created_at": get_ist_now(),
         "report": quiz_report,
     }
     history_insert = await quiz_history_collection.insert_one(history_doc)
@@ -282,6 +380,15 @@ async def submit_test(test_result: TestResult, current_user: dict = Depends(get_
                 )
         except Exception as e:
             logger.exception("Per-quiz report retry failed: %s", e)
+
+    # Schedule background task to auto-generate comprehensive parent report
+    # This runs asynchronously and doesn't block the response
+    background_tasks.add_task(
+        generate_parent_report_background,
+        current_user["apaar_id"],
+        current_user["email"]
+    )
+    logger.info(f"Scheduled background parent report generation for {current_user['apaar_id']}")
 
     return {"message": "Test submitted successfully"}
 
@@ -341,11 +448,11 @@ async def upload_physical_test(data: PhysicalTestInput, current_user: dict = Dep
     test_result_dict = {
         "apaar_id": data.apaar_id,
         "test_type": "physical",
-        "test_date": datetime.utcnow(),
+        "test_date": get_ist_now(),
         "physical_metrics": physical_metrics,
         "notes": data.health_notes,
         "physical_advice": advice,
-        "created_at": datetime.utcnow()
+        "created_at": get_ist_now()
     }
     
     await test_results_collection.insert_one(test_result_dict)
@@ -356,7 +463,6 @@ async def upload_physical_tests_bulk(payload: PhysicalBulkUploadRequest, current
     if current_user["role"] != "teacher":
         raise HTTPException(status_code=403, detail="Access denied")
 
-    from datetime import datetime
     inserted = 0
     failed = 0
     errors = []
@@ -402,11 +508,11 @@ async def upload_physical_tests_bulk(payload: PhysicalBulkUploadRequest, current
             test_result_dict = {
                 "apaar_id": apaar_id,
                 "test_type": "physical",
-                "test_date": datetime.utcnow(),
+                "test_date": get_ist_now(),
                 "physical_metrics": physical_metrics,
                 "notes": item.health_notes,
                 "physical_advice": advice,
-                "created_at": datetime.utcnow(),
+                "created_at": get_ist_now(),
             }
             await test_results_collection.insert_one(test_result_dict)
             inserted += 1
@@ -456,8 +562,7 @@ async def generate_report(current_user: dict = Depends(get_current_user)):
     try:
         dob = profile.get("date_of_birth")
         if dob:
-            from datetime import datetime
-            now = datetime.utcnow()
+            now = get_ist_now()
             age_years = now.year - dob.year - ((now.month, now.day) < (dob.month, dob.day))
             profile["age_years"] = max(age_years, 0)
     except Exception:
@@ -470,8 +575,7 @@ async def generate_report(current_user: dict = Depends(get_current_user)):
     
     report_data = await generate_parent_report(current_user["apaar_id"], results, profile)
     
-    from datetime import datetime
-    now = datetime.utcnow()
+    now = get_ist_now()
     remedy_dict = {
         "apaar_id": current_user["apaar_id"],
         "generated_at": now.isoformat(),           # ✅ convert datetime to string
@@ -479,6 +583,8 @@ async def generate_report(current_user: dict = Depends(get_current_user)):
         "sub_grouping_recommendation": report_data["Sub_grouping_Recommendation"],
         "targeted_sel_activities": report_data["Targeted_SEL_Activities"],
         "progress_tracking": report_data["Progress_Tracking"],
+        "visuals": report_data.get("visuals", []),
+        "competency_scores": {},
         "created_at": now.isoformat()              # ✅ convert datetime to string
     }
 
@@ -502,6 +608,7 @@ async def generate_report(current_user: dict = Depends(get_current_user)):
             "Sub_grouping_Recommendation": report_data["Sub_grouping_Recommendation"],
             "Targeted_SEL_Activities": report_data["Targeted_SEL_Activities"],
             "Progress_Tracking": report_data["Progress_Tracking"],
+            "visuals": report_data.get("visuals", []),
         },
         "created_at": now,
     })
