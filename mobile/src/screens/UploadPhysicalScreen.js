@@ -29,6 +29,7 @@ export default function UploadPhysicalScreen({ route, navigation }) {
     sleep_hours: '',
   });
   const [loading, setLoading] = useState(false);
+  const [lastUpload, setLastUpload] = useState(null);
 
   const parseNumOrNull = (value) => {
     if (value === null || value === undefined) return null;
@@ -93,9 +94,15 @@ export default function UploadPhysicalScreen({ route, navigation }) {
     try {
       const data = buildPayload();
       const res = await teacherAPI.uploadPhysicalTest(data);
-      Alert.alert('Success', 'Physical test data uploaded successfully', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
+
+      // Store a local snapshot of what was saved so we can render it below.
+      setLastUpload({
+        payload: data,
+        advice: res?.data?.physical_advice || null,
+        uploadedAt: new Date().toISOString(),
+      });
+
+      Alert.alert('Success', 'Physical test data uploaded successfully');
     } catch (error) {
       Alert.alert('Error', 'Failed to upload data');
     } finally {
@@ -309,6 +316,93 @@ export default function UploadPhysicalScreen({ route, navigation }) {
             {loading ? 'Uploading...' : 'Upload Data'}
           </Text>
         </TouchableOpacity>
+
+        {lastUpload && (
+          <View style={styles.summarySection}>
+            <Text style={styles.summaryTitle}>Last uploaded data (this session)</Text>
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Uploaded at: </Text>
+                <Text style={styles.summaryValue}>
+                  {new Date(lastUpload.uploadedAt).toLocaleString()}
+                </Text>
+              </Text>
+              <Text style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>BMI: </Text>
+                <Text style={styles.summaryValue}>
+                  {lastUpload.payload.bmi ?? '—'}
+                </Text>
+              </Text>
+              <Text style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Fitness score: </Text>
+                <Text style={styles.summaryValue}>
+                  {lastUpload.payload.fitness_score ?? '—'}
+                </Text>
+              </Text>
+              {lastUpload.payload.additional_metrics && (
+                <>
+                  {'height_cm' in lastUpload.payload.additional_metrics && (
+                    <Text style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Height (cm): </Text>
+                      <Text style={styles.summaryValue}>
+                        {lastUpload.payload.additional_metrics.height_cm}
+                      </Text>
+                    </Text>
+                  )}
+                  {'weight_kg' in lastUpload.payload.additional_metrics && (
+                    <Text style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Weight (kg): </Text>
+                      <Text style={styles.summaryValue}>
+                        {lastUpload.payload.additional_metrics.weight_kg}
+                      </Text>
+                    </Text>
+                  )}
+                  {'resting_heart_rate' in lastUpload.payload.additional_metrics && (
+                    <Text style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Resting HR (bpm): </Text>
+                      <Text style={styles.summaryValue}>
+                        {lastUpload.payload.additional_metrics.resting_heart_rate}
+                      </Text>
+                    </Text>
+                  )}
+                  {'systolic_bp' in lastUpload.payload.additional_metrics && (
+                    <Text style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>BP systolic: </Text>
+                      <Text style={styles.summaryValue}>
+                        {lastUpload.payload.additional_metrics.systolic_bp}
+                      </Text>
+                    </Text>
+                  )}
+                  {'diastolic_bp' in lastUpload.payload.additional_metrics && (
+                    <Text style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>BP diastolic: </Text>
+                      <Text style={styles.summaryValue}>
+                        {lastUpload.payload.additional_metrics.diastolic_bp}
+                      </Text>
+                    </Text>
+                  )}
+                  {'sleep_hours' in lastUpload.payload.additional_metrics && (
+                    <Text style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Sleep (hrs): </Text>
+                      <Text style={styles.summaryValue}>
+                        {lastUpload.payload.additional_metrics.sleep_hours}
+                      </Text>
+                    </Text>
+                  )}
+                </>
+              )}
+
+              {lastUpload.advice?.Summary && (
+                <>
+                  <Text style={[styles.summaryLabel, { marginTop: 8 }]}>
+                    Advice summary:
+                  </Text>
+                  <Text style={styles.summaryAdvice}>{lastUpload.advice.Summary}</Text>
+                </>
+              )}
+            </View>
+          </View>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -394,5 +488,38 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  summarySection: {
+    marginTop: 10,
+  },
+  summaryTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+  },
+  summaryCard: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  summaryRow: {
+    fontSize: 14,
+    color: '#555',
+    marginBottom: 4,
+  },
+  summaryLabel: {
+    fontWeight: '600',
+  },
+  summaryValue: {
+    fontWeight: '400',
+  },
+  summaryAdvice: {
+    fontSize: 14,
+    color: '#555',
+    marginTop: 4,
+    lineHeight: 20,
   },
 });
