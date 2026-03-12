@@ -450,6 +450,11 @@ async def _generate_chart_data(test_results: List[Dict]) -> Dict:
 
 def _fallback_parent_report(test_results: List[Dict]) -> Dict[str, Any]:
     """Fallback parent report when LLM API quota is exceeded"""
+    logger.info("=" * 80)
+    logger.warning("⚠️  FALLBACK PARENT REPORT GENERATED")
+    logger.info("=" * 80)
+    logger.info(f"Report Type: PARENT COMPREHENSIVE REPORT (FALLBACK)")
+    
     num_tests = len(test_results)
     eq_tests = [t for t in test_results if t.get("test_type") == "eq"]
     iq_tests = [t for t in test_results if t.get("test_type") == "iq"]
@@ -460,6 +465,10 @@ def _fallback_parent_report(test_results: List[Dict]) -> Dict[str, Any]:
     
     avg_eq = sum(eq_scores) / len(eq_scores) if eq_scores else 0
     avg_iq = sum(iq_scores) / len(iq_scores) if iq_scores else 0
+    
+    logger.info(f"Total Tests Analyzed: {num_tests}")
+    logger.info(f"EQ Tests: {len(eq_tests)} (avg: {avg_eq:.1f}%)")
+    logger.info(f"IQ Tests: {len(iq_tests)} (avg: {avg_iq:.1f}%)")
     
     analysis = f"""The student has completed {num_tests} assessment(s) to date.
 
@@ -515,6 +524,10 @@ Note: This is a basic summary. For detailed analysis, please try again when the 
         "is_fallback": True,
         "fallback_reason": "LLM API quota exceeded or service unavailable"
     }
+    
+    logger.info(f"📊 Chart Data: 2 fallback charts included")
+    logger.info(f"📝 SEL Activities: 3 default activities recommended")
+    logger.info("=" * 80)
 
 
 async def generate_parent_report(apaar_id: str, test_results: List[Dict], student_profile: Dict) -> Dict[str, Any]:
@@ -614,7 +627,14 @@ IMPORTANT: Ensure Sub_grouping_Recommendation, Targeted_SEL_Activities, and Prog
 
     report = _extract_json(str(content))
     if isinstance(report, dict):
-        logger.info("✅ REAL PARENT REPORT generated successfully from LLM")
+        logger.info("=" * 80)
+        logger.info("✅ REAL PARENT REPORT GENERATED FROM LLM")
+        logger.info("=" * 80)
+        logger.info(f"Report Type: PARENT COMPREHENSIVE REPORT")
+        logger.info(f"APAAR ID: {apaar_id}")
+        logger.info(f"Total Test Results Analyzed: {len(test_results)}")
+        logger.info(f"Student: {student_profile.get('full_name', 'Unknown')}")
+        logger.info(f"Grade: {student_profile.get('grade', 'Unknown')}")
         
         if not isinstance(report.get("Targeted_SEL_Activities"), list):
             report["Targeted_SEL_Activities"] = []
@@ -662,7 +682,11 @@ IMPORTANT: Ensure Sub_grouping_Recommendation, Targeted_SEL_Activities, and Prog
             report["visuals"] = chart_data.get("visuals", [])
             logger.info("Generated fallback chart data")
         
-        logger.info(f"Parent report contains {len(report.get('visuals', []))} chart(s)")
+        logger.info(f"📊 Chart Data: {len(report.get('visuals', []))} chart(s) included")
+        for idx, visual in enumerate(report.get('visuals', [])):
+            logger.info(f"  Chart {idx + 1}: {visual.get('chartTitle', 'Untitled')} ({visual.get('chartType', 'unknown')})")
+        logger.info(f"📝 SEL Activities: {len(report.get('Targeted_SEL_Activities', []))} activities recommended")
+        logger.info("=" * 80)
         
         # Generate emotional insight image and append to Data_Analysis
         analysis_text = report.get("Data_Analysis", "")
@@ -793,7 +817,14 @@ CRITICAL RULES:
 
         report = _extract_json(str(content))
         if isinstance(report, dict) and report.get("Data_Analysis"):
-            logger.info("✅ REAL QUIZ REPORT generated successfully from LLM")
+            logger.info("=" * 80)
+            logger.info("✅ REAL QUIZ REPORT GENERATED FROM LLM")
+            logger.info("=" * 80)
+            logger.info(f"Report Type: SINGLE QUIZ ATTEMPT REPORT")
+            logger.info(f"Student: {student_profile.get('full_name', 'Unknown')}")
+            logger.info(f"Grade: {student_profile.get('grade', 'Unknown')}")
+            logger.info(f"Score: {score}")
+            logger.info(f"Questions Analyzed: {len(questions)}")
             
             # Clean any JSON that leaked into the analysis text
             report["Data_Analysis"] = _clean_data_analysis(report["Data_Analysis"])
@@ -819,7 +850,23 @@ CRITICAL RULES:
                 except Exception as e:
                     logger.warning(f"Failed to attach image to quiz report: {e}")
 
-            logger.info(f"Quiz report contains {len(report.get('visuals', []))} chart(s)")
+            logger.info(f"📊 Chart Data: {len(report.get('visuals', []))} chart(s) included")
+            for idx, visual in enumerate(report.get('visuals', [])):
+                logger.info(f"  Chart {idx + 1}: {visual.get('chartTitle', 'Untitled')} ({visual.get('chartType', 'unknown')})")
+            logger.info(f"📝 SEL Activities: {len(report.get('Targeted_SEL_Activities', []))} activities recommended")
+            
+            # Log detailed question-answer analysis
+            logger.info("\n📋 DETAILED QUIZ ANALYSIS:")
+            logger.info("-" * 80)
+            for idx, (q, a) in enumerate(zip(questions[:10], answers[:10])):  # Log first 10
+                param = q.get('parameter_measured', 'Unknown')
+                q_text = q.get('question_text', 'No question text')[:60]
+                logger.info(f"  Q{idx + 1} [{param}]: {q_text}...")
+                logger.info(f"       Answer: {a}")
+            if len(questions) > 10:
+                logger.info(f"  ... and {len(questions) - 10} more questions")
+            logger.info("-" * 80)
+            logger.info("=" * 80)
             return report
         else:
             logger.warning("⚠️ FALLBACK QUIZ REPORT: LLM returned invalid JSON structure")
@@ -833,6 +880,14 @@ CRITICAL RULES:
 
 
 def _fallback_quiz_report() -> Dict[str, Any]:
+    logger.info("=" * 80)
+    logger.warning("⚠️  FALLBACK QUIZ REPORT GENERATED")
+    logger.info("=" * 80)
+    logger.info(f"Report Type: SINGLE QUIZ ATTEMPT REPORT (FALLBACK)")
+    logger.info(f"📊 Chart Data: 2 fallback charts included")
+    logger.info(f"📝 SEL Activities: 2 default activities recommended")
+    logger.info("=" * 80)
+    
     return {
         "Data_Analysis": "Detailed analysis could not be generated for this attempt. Your answers have been saved.",
         "Sub_grouping_Recommendation": "",
@@ -921,4 +976,244 @@ Return JSON only with keys:
         "Key_Findings": [],
         "Advice": [],
         "Safety_Note": "This is general guidance, not medical advice.",
+    }
+
+
+async def generate_nutrition_plan(
+    physical_metrics: Dict[str, Any],
+    student_profile: Dict[str, Any],
+    health_notes: str | None = None,
+) -> Dict[str, Any]:
+    """
+    Generate a comprehensive nutrition and lifestyle plan for a student based on their physical metrics.
+    Returns a structured plan with UI summary and detailed PDF content.
+    """
+    age = student_profile.get("age", "Not specified")
+    gender = student_profile.get("gender", "Not specified")
+    
+    payload = {
+        "student": {
+            "full_name": student_profile.get("full_name", "Student"),
+            "age": age,
+            "gender": gender,
+            "grade": student_profile.get("grade"),
+        },
+        "physical_metrics": physical_metrics,
+        "health_notes": health_notes or "",
+    }
+
+    prompt = f"""You are an Expert Pediatric Nutritionist and Health Analyst evaluating a student's physical health metrics. Your task is to analyze the provided biometric data and generate a BMI-based health classification, growth-focused Indian diet plan, and lifestyle recommendations.
+
+This information will be displayed on the Student Dashboard and used to generate a PDF Health Report.
+
+Input Parameters:
+{json.dumps(payload, ensure_ascii=False, default=str)[:12000]}
+
+Analysis Guidelines:
+- Use WHO BMI-for-age percentiles to classify the student into: Underweight, Healthy Weight, Overweight, or Obese
+- Focus on healthy growth, balanced nutrition, and lifestyle improvement
+- Diet recommendations must be: Culturally relevant Indian foods, Student-friendly, Affordable and accessible, Growth-focused rather than calorie-restrictive
+
+Avoid:
+- Medical diagnoses
+- Prescription treatments
+- Extreme dieting
+- Unsafe health claims
+
+STRICT OUTPUT FORMAT:
+You must output exactly two sections separated by:
+===SPLIT===
+
+Do NOT include conversational text before or after the sections.
+
+Part 1: Quick UI Summary
+
+Health Status Overview
+Provide exactly two sentences explaining:
+- The student's BMI classification
+- What it means for their growth and health trajectory
+
+Key Focus Areas
+Provide three concise actionable insights suitable for UI display.
+Example style:
+• Increase protein intake to support muscle development
+• Improve hydration and daily activity levels
+• Maintain consistent sleep for proper growth and recovery
+
+===SPLIT===
+
+Part 2: Detailed PDF Diet & Lifestyle Report
+
+Comprehensive Physical Health & Nutrition Plan
+
+1. Biometric Analysis
+Provide a short, empathetic explanation of:
+- Height, Weight, BMI classification
+- Why the student falls into this category
+- The importance of addressing this at their age
+
+2. Personalized Indian Diet Plan
+Note: Focus on simple, nutrient-dense foods suitable for a student's daily routine.
+
+Early Morning (Pre-School)
+Suggest 1–2 quick items such as: soaked almonds, banana, milk, dates
+
+Breakfast
+Balanced Indian breakfast examples:
+- Poha with peanuts
+- Moong dal chilla
+- Idli with sambar
+- Vegetable upma
+
+School Tiffin (Lunch)
+Portable balanced meal examples:
+- Roti + seasonal sabzi + paneer/egg
+- Vegetable pulao with curd
+- Dal + rice + salad
+
+Evening Snack
+Post-school energy refuel:
+- Roasted makhana
+- Roasted chana
+- Fruit bowl
+- Peanut chikki
+
+Dinner
+Light and easily digestible meal:
+- Dal + rice + vegetables
+- Roti + paneer bhurji
+- Khichdi with ghee
+
+3. Hydration & Lifestyle Add-Ons
+
+Hydration Goal: Recommend daily water intake based on age and weight
+
+Physical Activity: Recommend sports or physical activity suitable for improving overall fitness
+
+Sleep Hygiene: Explain the importance of adequate sleep for growth hormone release and recovery
+
+4. Medical Disclaimer
+This report is generated for educational and nutritional guidance purposes only. It is not a substitute for professional medical advice, diagnosis, or treatment.
+
+5. Visual Data (Strict JSON)
+At the very end of the report, output a raw JSON block enclosed in ```json tags.
+This JSON will feed directly into the mobile app's chart UI.
+Generate data for one Pie/Donut chart representing the ideal macronutrient distribution for the student's goal.
+
+```json
+{{
+  "visuals": [
+    {{
+      "chartType": "pie",
+      "chartTitle": "Ideal Daily Macro Target",
+      "labels": ["Carbohydrates", "Proteins", "Healthy Fats"],
+      "datasets": [
+        {{
+          "data": [55, 25, 20]
+        }}
+      ]
+    }}
+  ]
+}}
+```
+"""
+
+    try:
+        response = await _call_llm_with_retry(
+            messages=[
+                {"role": "system", "content": "You are an expert pediatric nutritionist and health analyst. Follow the formatting rules exactly."},
+                {"role": "user", "content": prompt},
+            ],
+            max_retries=2,
+            initial_delay=2.0
+        )
+        
+        content = response.choices[0].message.content if response.choices else None
+        if not content or not str(content).strip():
+            logger.warning("LLM returned empty content for nutrition plan")
+            return _fallback_nutrition_plan()
+        
+        # Split content by ===SPLIT===
+        parts = str(content).split("===SPLIT===")
+        if len(parts) != 2:
+            logger.warning("Nutrition plan missing SPLIT marker")
+            return _fallback_nutrition_plan()
+        
+        ui_summary = parts[0].strip()
+        detailed_report = parts[1].strip()
+        
+        # Extract JSON visuals from detailed report
+        json_match = re.search(r'```json\s*\n?(.*?)\n?```', detailed_report, re.DOTALL)
+        visuals = []
+        if json_match:
+            try:
+                visual_data = json.loads(json_match.group(1).strip())
+                visuals = visual_data.get("visuals", [])
+                # Remove JSON block from detailed report
+                detailed_report = detailed_report[:json_match.start()].strip()
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse nutrition plan visuals: {e}")
+        
+        logger.info("✅ Nutrition plan generated successfully")
+        return {
+            "ui_summary": ui_summary,
+            "detailed_report": detailed_report,
+            "visuals": visuals,
+            "is_fallback": False
+        }
+        
+    except Exception as e:
+        logger.exception(f"Failed to generate nutrition plan: {e}")
+        return _fallback_nutrition_plan()
+
+
+def _fallback_nutrition_plan() -> Dict[str, Any]:
+    """Fallback nutrition plan when LLM fails"""
+    logger.warning("⚠️  Using fallback nutrition plan")
+    return {
+        "ui_summary": """Health Status Overview
+Your physical metrics have been recorded. A balanced diet and regular physical activity are essential for healthy growth.
+
+Key Focus Areas
+• Maintain a balanced diet with adequate protein, carbohydrates, and healthy fats
+• Stay hydrated with 6-8 glasses of water daily
+• Engage in at least 60 minutes of physical activity each day""",
+        "detailed_report": """Comprehensive Physical Health & Nutrition Plan
+
+1. Biometric Analysis
+Your physical health data has been recorded. Maintaining a healthy lifestyle through proper nutrition and regular exercise is important for your growth and development.
+
+2. Personalized Indian Diet Plan
+
+Early Morning (Pre-School): 1 glass of warm water, 5-6 soaked almonds
+
+Breakfast: Poha with peanuts and vegetables, or 2 idlis with sambar, or vegetable paratha with curd
+
+School Tiffin (Lunch): 2 rotis with seasonal vegetable sabzi, dal, and a small portion of rice
+
+Evening Snack: Fresh fruit (banana, apple, or seasonal fruit), or roasted chana, or a glass of milk
+
+Dinner: Light meal with dal, rice, roti, and vegetables. Avoid heavy or fried foods.
+
+3. Hydration & Lifestyle Add-Ons
+Hydration Goal: Drink 6-8 glasses of water throughout the day
+Physical Activity: Engage in outdoor play, sports, or exercise for at least 60 minutes daily
+Sleep Hygiene: Aim for 8-10 hours of quality sleep each night
+
+4. Medical Disclaimer
+This report is generated for educational and nutritional guidance purposes only. It is not a substitute for professional medical advice, diagnosis, or treatment.""",
+        "visuals": [
+            {
+                "chartType": "pie",
+                "chartTitle": "Ideal Daily Macro Target",
+                "labels": ["Carbohydrates", "Proteins", "Healthy Fats"],
+                "datasets": [
+                    {
+                        "data": [55, 25, 20]
+       
+                    }
+                ]
+            }
+        ],
+        "is_fallback": True
     }

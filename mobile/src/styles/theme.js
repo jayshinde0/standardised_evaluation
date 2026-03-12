@@ -260,3 +260,10 @@ export const badge = {
     borderRadius: borderRadius.md,
   },
 };
+
+// Glass card effect
+export const glassCard = {
+  backgroundColor: 'rgba(255, 255, 255, 0.95)',
+  borderRadius: borderRadius.lg,
+  ...shadows.md,
+};

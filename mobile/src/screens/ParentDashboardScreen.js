@@ -108,7 +108,7 @@ export default function ParentDashboardScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={[colors.primary, colors.primaryDark]}
+        colors={[colors.primary || '#1E3A8A', colors.primaryDark || '#1E40AF']}
         style={styles.headerGradient}
       >
         <View style={styles.header}>
@@ -260,7 +260,7 @@ export default function ParentDashboardScreen({ navigation }) {
             activeOpacity={0.7}
           >
             <LinearGradient
-              colors={[colors.secondary, colors.secondaryDark]}
+              colors={[colors.secondary || '#0D9488', colors.secondaryDark || '#0F766E']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.actionButtonGradient}

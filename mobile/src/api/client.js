@@ -95,6 +95,11 @@ export const studentAPI = {
 
   getQuizHistory: () =>
     apiClient.get('/student/quiz-history'),
+
+  getPhysicalHealth: () =>
+    apiClient.get('/student/physical-health', {
+      timeout: 30000, // 30 seconds for nutrition plan generation
+    }),
 };
 
 export const teacherAPI = {
@@ -103,6 +108,9 @@ export const teacherAPI = {
   
   uploadPhysicalTest: (data) => 
     apiClient.post('/teacher/upload-physical-test', data),
+
+  getPhysicalTest: (apaarId) =>
+    apiClient.get(`/teacher/physical-test/${apaarId}`),
 
   uploadPhysicalTestsBulk: (items) =>
     apiClient.post('/teacher/upload-physical-tests-bulk', { items }),

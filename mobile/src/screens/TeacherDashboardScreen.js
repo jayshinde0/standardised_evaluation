@@ -185,7 +185,7 @@ export default function TeacherDashboardScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={[colors.primary, colors.primaryDark]}
+        colors={[colors.primary || '#1E3A8A', colors.primaryDark || '#1E40AF']}
         style={styles.headerGradient}
       >
         <View style={styles.header}>
@@ -208,7 +208,7 @@ export default function TeacherDashboardScreen({ navigation }) {
       <FlatList
         data={students}
         renderItem={renderStudent}
-        keyExtractor={(item) => item.apaar_id}
+        keyExtractor={(item, index) => item._id || `${item.apaar_id}-${index}`}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={

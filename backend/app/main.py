@@ -79,7 +79,16 @@ async def generate_parent_report_background(apaar_id: str, email: str):
             test_results=all_results,
             student_profile=profile
         )
-        logger.info(f"[BACKGROUND TASK] Report generated successfully for {apaar_id}")
+        
+        # Log report type and details
+        if parent_report.get("is_fallback"):
+            logger.warning(f"[BACKGROUND TASK] ⚠️  FALLBACK report generated for {apaar_id}")
+            logger.warning(f"[BACKGROUND TASK] Reason: {parent_report.get('fallback_reason', 'Unknown')}")
+        else:
+            logger.info(f"[BACKGROUND TASK] ✅ REAL LLM report generated for {apaar_id}")
+        
+        logger.info(f"[BACKGROUND TASK] Report contains {len(parent_report.get('visuals', []))} chart(s)")
+        logger.info(f"[BACKGROUND TASK] Report contains {len(parent_report.get('Targeted_SEL_Activities', []))} SEL activities")
         
         # Store the report in actionable_remedies collection
         report_doc = {
@@ -345,6 +354,15 @@ async def submit_test(test_result: TestResult, background_tasks: BackgroundTasks
                 result_dict.get("score"),
                 profile,
             )
+            
+            # Log quiz report details
+            if quiz_report:
+                if quiz_report.get("is_fallback"):
+                    logger.warning(f"⚠️  FALLBACK quiz report for {current_user['apaar_id']}")
+                    logger.warning(f"Reason: {quiz_report.get('fallback_reason', 'Unknown')}")
+                else:
+                    logger.info(f"✅ REAL LLM quiz report for {current_user['apaar_id']}")
+                logger.info(f"Quiz report: {len(quiz_report.get('visuals', []))} chart(s), {len(quiz_report.get('Targeted_SEL_Activities', []))} activities")
         except Exception as e:
             logger.exception("Per-quiz report generation failed: %s", e)
             quiz_report = None
@@ -378,6 +396,11 @@ async def submit_test(test_result: TestResult, background_tasks: BackgroundTasks
                     {"_id": history_insert.inserted_id},
                     {"$set": {"report": quiz_report}},
                 )
+                # Log retry success
+                if quiz_report.get("is_fallback"):
+                    logger.warning(f"⚠️  FALLBACK quiz report (retry) for {current_user['apaar_id']}")
+                else:
+                    logger.info(f"✅ REAL LLM quiz report (retry) for {current_user['apaar_id']}")
         except Exception as e:
             logger.exception("Per-quiz report retry failed: %s", e)
 
@@ -403,6 +426,46 @@ async def get_student_quiz_history(current_user: dict = Depends(get_current_user
         history.append(item)
     return {"quiz_history": history}
 
+@app.get("/api/student/physical-health")
+async def get_student_physical_health(current_user: dict = Depends(get_current_user)):
+    """Get student's physical metrics and generate personalized nutrition plan"""
+    if current_user["role"] != "student":
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Fetch latest physical test data
+    physical_test = await test_results_collection.find_one(
+        {"apaar_id": current_user["apaar_id"], "test_type": "physical"},
+        sort=[("created_at", -1)]
+    )
+    
+    if not physical_test:
+        return {"has_data": False, "physical_metrics": None, "nutrition_plan": None}
+    
+    # Fetch student profile for age/gender
+    profile = await student_profiles_collection.find_one({"apaar_id": current_user["apaar_id"]})
+    if not profile:
+        profile = await users_collection.find_one({"apaar_id": current_user["apaar_id"]})
+    
+    # Generate nutrition plan
+    from app.llm_service import generate_nutrition_plan
+    try:
+        nutrition_plan = await generate_nutrition_plan(
+            physical_metrics=physical_test.get("physical_metrics", {}),
+            student_profile=profile or {},
+            health_notes=physical_test.get("notes", "")
+        )
+    except Exception as e:
+        logger.exception(f"Failed to generate nutrition plan: {e}")
+        nutrition_plan = None
+    
+    return {
+        "has_data": True,
+        "physical_metrics": physical_test.get("physical_metrics", {}),
+        "health_notes": physical_test.get("notes", ""),
+        "last_updated": physical_test.get("created_at"),
+        "nutrition_plan": nutrition_plan
+    }
+
 # Teacher endpoints
 @app.get("/api/teacher/students")
 async def get_students(current_user: dict = Depends(get_current_user)):
@@ -422,6 +485,23 @@ async def upload_physical_test(data: PhysicalTestInput, current_user: dict = Dep
         raise HTTPException(status_code=403, detail="Access denied")
     
     from datetime import datetime
+    
+    # Log received data
+    logger.info("=" * 80)
+    logger.info("📊 PHYSICAL TEST DATA RECEIVED")
+    logger.info("=" * 80)
+    logger.info(f"APAAR ID: {data.apaar_id}")
+    logger.info(f"BMI: {data.bmi}")
+    logger.info(f"Fitness Score: {data.fitness_score}")
+    logger.info(f"Height (cm): {data.height_cm}")
+    logger.info(f"Weight (kg): {data.weight_kg}")
+    logger.info(f"Heart Rate (bpm): {data.resting_heart_rate}")
+    logger.info(f"BP Systolic (mmHg): {data.systolic_bp}")
+    logger.info(f"BP Diastolic (mmHg): {data.diastolic_bp}")
+    logger.info(f"Sleep (hours): {data.sleep_hours}")
+    logger.info(f"Health Notes: {data.health_notes}")
+    logger.info("=" * 80)
+    
     # Base physical metrics (all optional)
     physical_metrics = {
         "bmi": data.bmi,
@@ -436,6 +516,9 @@ async def upload_physical_test(data: PhysicalTestInput, current_user: dict = Dep
     }
     # Remove nulls to keep documents clean
     physical_metrics = {k: v for k, v in physical_metrics.items() if v is not None}
+    
+    logger.info(f"📦 Storing physical_metrics: {physical_metrics}")
+    logger.info("=" * 80)
 
     student_profile = await student_profiles_collection.find_one({"apaar_id": data.apaar_id}) or {}
     advice = None
@@ -457,6 +540,42 @@ async def upload_physical_test(data: PhysicalTestInput, current_user: dict = Dep
     
     await test_results_collection.insert_one(test_result_dict)
     return {"message": "Physical test data uploaded successfully", "physical_advice": advice}
+
+@app.get("/api/teacher/physical-test/{apaar_id}")
+async def get_physical_test(apaar_id: str, current_user: dict = Depends(get_current_user)):
+    """Get the latest physical test data for a student with nutrition plan"""
+    if current_user["role"] != "teacher":
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Find the most recent physical test for this student
+    physical_test = await test_results_collection.find_one(
+        {"apaar_id": apaar_id, "test_type": "physical"},
+        sort=[("created_at", -1)]
+    )
+    
+    if not physical_test:
+        return {"has_data": False, "data": None}
+    
+    # Convert ObjectId to string
+    physical_test["_id"] = str(physical_test["_id"])
+    
+    # Fetch student profile for nutrition plan generation
+    profile = await student_profiles_collection.find_one({"apaar_id": apaar_id})
+    
+    # Generate nutrition plan
+    from app.llm_service import generate_nutrition_plan
+    try:
+        nutrition_plan = await generate_nutrition_plan(
+            physical_metrics=physical_test.get("physical_metrics", {}),
+            student_profile=profile or {},
+            health_notes=physical_test.get("notes")
+        )
+        physical_test["nutrition_plan"] = nutrition_plan
+    except Exception as e:
+        logger.exception(f"Failed to generate nutrition plan: {e}")
+        physical_test["nutrition_plan"] = None
+    
+    return {"has_data": True, "data": physical_test}
 
 @app.post("/api/teacher/upload-physical-tests-bulk")
 async def upload_physical_tests_bulk(payload: PhysicalBulkUploadRequest, current_user: dict = Depends(get_current_user)):
@@ -574,6 +693,14 @@ async def generate_report(current_user: dict = Depends(get_current_user)):
         results.append(result)
     
     report_data = await generate_parent_report(current_user["apaar_id"], results, profile)
+    
+    # Log report details
+    if report_data.get("is_fallback"):
+        logger.warning(f"⚠️  FALLBACK parent report for {current_user['apaar_id']}")
+        logger.warning(f"Reason: {report_data.get('fallback_reason', 'Unknown')}")
+    else:
+        logger.info(f"✅ REAL LLM parent report for {current_user['apaar_id']}")
+    logger.info(f"Parent report: {len(report_data.get('visuals', []))} chart(s), {len(report_data.get('Targeted_SEL_Activities', []))} activities")
     
     now = get_ist_now()
     remedy_dict = {
