@@ -20,6 +20,7 @@ from app.models import (
 from app.auth import get_password_hash, verify_password, create_access_token, decode_access_token
 from app.llm_service import (
     generate_eq_test,
+    generate_iq_test,
     generate_parent_report,
     generate_quiz_report_and_remedies,
     generate_physical_advice,
@@ -173,6 +174,27 @@ async def get_eq_test(current_user: dict = Depends(get_current_user)):
         )
     return {"questions": questions}
 
+
+@app.post("/api/student/generate-iq-test")
+async def get_iq_test(current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "student":
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    profile = await student_profiles_collection.find_one({"apaar_id": current_user["apaar_id"]})
+    grade = profile.get("grade", 5) if profile else 5
+
+    # For now, IQ questions are generated from a static helper and
+    # are unlikely to fail; keep error handling simple.
+    try:
+        questions = await generate_iq_test(grade)
+    except Exception:
+        logger.exception("generate-iq-test failed")
+        raise HTTPException(
+            status_code=502,
+            detail="Could not generate test. Please try again.",
+        )
+    return {"questions": questions}
+
 @app.post("/api/student/submit-test")
 async def submit_test(test_result: TestResult, current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "student":
@@ -183,7 +205,32 @@ async def submit_test(test_result: TestResult, current_user: dict = Depends(get_
     # Convert enum to string
     if "test_type" in result_dict and hasattr(result_dict["test_type"], "value"):
         result_dict["test_type"] = result_dict["test_type"].value
-    
+
+    # Compute IQ score (percentage correct) if applicable
+    if result_dict.get("test_type") == "iq" and result_dict.get("questions") and result_dict.get("answers"):
+        questions = result_dict.get("questions") or []
+        answers = result_dict.get("answers") or []
+        total = 0
+        correct = 0
+        for idx, q in enumerate(questions):
+            if idx >= len(answers):
+                break
+            a = answers[idx]
+            try:
+                # Accept numeric or numeric-like string
+                if isinstance(a, str):
+                    a_val = int(a)
+                else:
+                    a_val = int(a)
+            except Exception:
+                continue
+            if isinstance(q, dict) and isinstance(q.get("correct_index"), int):
+                total += 1
+                if a_val == q["correct_index"]:
+                    correct += 1
+        if total > 0:
+            result_dict["score"] = round((correct / total) * 100.0, 1)
+
     insert_result = await test_results_collection.insert_one(result_dict)
     from datetime import datetime
 

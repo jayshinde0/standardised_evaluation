@@ -81,6 +81,9 @@ export const studentAPI = {
   generateEQTest: () => 
     apiClient.post('/student/generate-eq-test'),
   
+  generateIQTest: () =>
+    apiClient.post('/student/generate-iq-test'),
+  
   submitTest: (testData) => 
     apiClient.post('/student/submit-test', testData),
 

@@ -63,6 +63,46 @@ async def generate_eq_test(grade_level: int = 5) -> List[Dict[str, Any]]:
     return []
 
 
+async def generate_iq_test(grade_level: int = 5) -> List[Dict[str, Any]]:
+    """
+    Generate a simple IQ-style test.
+    For reliability in development, this uses a static question set
+    instead of calling the LLM.
+    """
+    return [
+        {
+            "parameter_measured": "Logical Reasoning",
+            "question_text": "What number should come next in the sequence: 2, 4, 6, 8, ?",
+            "options": ["9", "10", "12", "14"],
+            "correct_index": 1,
+        },
+        {
+            "parameter_measured": "Pattern Recognition",
+            "question_text": "Which shape completes the pattern: ■, ▲, ■, ▲, ?",
+            "options": ["■", "▲", "●", "★"],
+            "correct_index": 0,
+        },
+        {
+            "parameter_measured": "Spatial Reasoning",
+            "question_text": "A square has 4 sides. How many sides do two squares have together?",
+            "options": ["4", "6", "8", "10"],
+            "correct_index": 2,
+        },
+        {
+            "parameter_measured": "Verbal Reasoning",
+            "question_text": "Which word does NOT belong with the others?",
+            "options": ["apple", "banana", "carrot", "mango"],
+            "correct_index": 2,
+        },
+        {
+            "parameter_measured": "Numerical Reasoning",
+            "question_text": "If 5 + 3 = 8, what is 9 − 4?",
+            "options": ["3", "4", "5", "6"],
+            "correct_index": 2,
+        },
+    ]
+
+
 async def generate_parent_report(apaar_id: str, test_results: List[Dict], student_profile: Dict) -> Dict[str, Any]:
     """Analyze test results and generate a comprehensive parent report with SEL remedies"""
 
