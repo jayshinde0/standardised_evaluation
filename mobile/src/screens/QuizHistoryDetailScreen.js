@@ -79,19 +79,19 @@ const extractOrGenerateVisuals = (report) => {
     }
   }
   
-  // Generate default visuals based on test data
-  console.log('\n⚠️  Using default fallback charts');
+  // ALWAYS generate and return default visuals - never return empty
+  console.log('\n⚠️  Using default fallback charts (ALWAYS SHOWN)');
   const defaultVisuals = [
     {
       chartType: 'bar',
-      chartTitle: 'Assessment Performance',
+      chartTitle: 'Core EmoSocio Parameters',
       labels: ['Empathy', 'Teamwork', 'Self-Awareness', 'Emotional Reg', 'Relationships'],
       datasets: [{ data: [75, 80, 70, 65, 85] }]
     },
     {
       chartType: 'pie',
-      chartTitle: 'Score Distribution',
-      labels: ['Strong', 'Developing', 'Needs Focus'],
+      chartTitle: 'Overall Score Distribution',
+      labels: ['Mastered (High)', 'Developing (Moderate)', 'Needs Focus (Low)'],
       datasets: [{ data: [40, 35, 25] }]
     }
   ];
@@ -112,6 +112,52 @@ const extractImageFromMarkdown = (text) => {
   
   // First, remove any JSON blocks that might still be in the text
   let cleanText = text.replace(/```json[\s\S]*?```/g, '').trim();
+  
+  // Also remove raw JSON objects containing visuals using a more robust approach
+  const startPattern = /\{\s*"visuals"\s*:\s*\[/;
+  const startMatch = cleanText.match(startPattern);
+  if (startMatch) {
+    const startPos = cleanText.indexOf(startMatch[0]);
+    let braceCount = 0;
+    let inString = false;
+    let escapeNext = false;
+    let endPos = startPos;
+    
+    for (let i = startPos; i < cleanText.length; i++) {
+      const char = cleanText[i];
+      
+      if (escapeNext) {
+        escapeNext = false;
+        continue;
+      }
+      
+      if (char === '\\') {
+        escapeNext = true;
+        continue;
+      }
+      
+      if (char === '"' && !escapeNext) {
+        inString = !inString;
+        continue;
+      }
+      
+      if (!inString) {
+        if (char === '{') {
+          braceCount++;
+        } else if (char === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            endPos = i + 1;
+            break;
+          }
+        }
+      }
+    }
+    
+    if (endPos > startPos) {
+      cleanText = (cleanText.substring(0, startPos) + cleanText.substring(endPos)).trim();
+    }
+  }
   
   const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
   const match = imageRegex.exec(cleanText);

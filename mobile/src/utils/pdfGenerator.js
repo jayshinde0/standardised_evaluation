@@ -16,7 +16,7 @@ export const generateComprehensivePDF = (item, report, questions, answers, score
   const { text: analysisText, imageUrl } = extractImageFromMarkdown(report.Data_Analysis || '');
   const visuals = extractOrGenerateVisuals(report);
   
-  // Generate chart HTML
+  // ALWAYS generate chart HTML - visuals should never be empty due to fallback logic
   const chartsHTML = visuals.map((visual) => {
     if (visual.chartType === 'bar') {
       const maxValue = Math.max(...visual.datasets[0].data);
@@ -386,12 +386,10 @@ export const generateComprehensivePDF = (item, report, questions, answers, score
         </div>
       ` : ''}
 
-      ${chartsHTML ? `
-        <div class="section">
-          <div class="section-title">📊 Performance Charts</div>
-          ${chartsHTML}
-        </div>
-      ` : ''}
+      <div class="section">
+        <div class="section-title">📊 Performance Charts</div>
+        ${chartsHTML}
+      </div>
 
       ${questionsHTML}
 

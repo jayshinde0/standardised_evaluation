@@ -646,31 +646,11 @@ IMPORTANT: Ensure Sub_grouping_Recommendation, Targeted_SEL_Activities, and Prog
         
         # Extract embedded JSON from Data_Analysis if present
         analysis_text = report.get("Data_Analysis", "")
-        embedded_visuals = []
+        analysis_text, embedded_visuals = _extract_visuals_from_text(analysis_text)
+        report["Data_Analysis"] = analysis_text
         
-        # Look for embedded JSON block in Data_Analysis
-        json_match = re.search(r'```json\s*\n?(.*?)\n?```', analysis_text, re.DOTALL)
-        if json_match:
-            try:
-                embedded_data = json.loads(json_match.group(1).strip())
-                if isinstance(embedded_data, dict) and "visuals" in embedded_data:
-                    embedded_visuals = embedded_data.get("visuals", [])
-                    logger.info(f"Extracted {len(embedded_visuals)} charts from embedded JSON in Data_Analysis")
-                    
-                    # Remove the JSON block from the analysis text for cleaner display
-                    analysis_text = analysis_text[:json_match.start()].strip()
-                    report["Data_Analysis"] = analysis_text
-                    logger.info("Cleaned JSON block from Data_Analysis text")
-            except json.JSONDecodeError as e:
-                logger.warning(f"Failed to parse embedded JSON in Data_Analysis: {e}")
-                # Try to extract partial JSON if it's incomplete
-                try:
-                    # Remove the incomplete JSON block from display
-                    analysis_text = analysis_text[:json_match.start()].strip()
-                    report["Data_Analysis"] = analysis_text
-                    logger.info("Removed incomplete JSON block from Data_Analysis")
-                except Exception:
-                    pass
+        if embedded_visuals:
+            logger.info(f"Extracted {len(embedded_visuals)} charts from Data_Analysis")
         
         # Use embedded visuals if available, otherwise generate from _generate_chart_data
         if embedded_visuals:
@@ -742,8 +722,115 @@ def _clean_data_analysis(text: str) -> str:
     """Remove any JSON blobs that the LLM accidentally embedded in the analysis text."""
     if not text:
         return text
-    cleaned = re.sub(r'\s*\{[\s\S]*?"(?:visuals|chartType|chartTitle|datasets)"[\s\S]*', '', text)
+    
+    # Remove markdown JSON code blocks
+    cleaned = re.sub(r'```json\s*\n?[\s\S]*?\n?```', '', text)
+    
+    # Remove raw JSON objects containing visuals using brace counting
+    start_pattern = r'\{\s*"visuals"\s*:\s*\['
+    start_match = re.search(start_pattern, cleaned)
+    if start_match:
+        start_pos = start_match.start()
+        brace_count = 0
+        in_string = False
+        escape_next = False
+        end_pos = start_pos
+        
+        for i in range(start_pos, len(cleaned)):
+            char = cleaned[i]
+            
+            if escape_next:
+                escape_next = False
+                continue
+            
+            if char == '\\':
+                escape_next = True
+                continue
+            
+            if char == '"' and not escape_next:
+                in_string = not in_string
+                continue
+            
+            if not in_string:
+                if char == '{':
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        end_pos = i + 1
+                        break
+        
+        if end_pos > start_pos:
+            cleaned = (cleaned[:start_pos] + cleaned[end_pos:]).strip()
+    
     return cleaned.strip()
+
+
+def _extract_visuals_from_text(analysis_text: str) -> tuple[str, list]:
+    """
+    Extract visuals JSON from analysis text and return cleaned text + visuals array.
+    Returns: (cleaned_text, visuals_array)
+    """
+    embedded_visuals = []
+    
+    # Try markdown code block first
+    json_match = re.search(r'```json\s*\n?(.*?)\n?```', analysis_text, re.DOTALL)
+    if json_match:
+        try:
+            embedded_data = json.loads(json_match.group(1).strip())
+            if isinstance(embedded_data, dict) and "visuals" in embedded_data:
+                embedded_visuals = embedded_data.get("visuals", [])
+                analysis_text = analysis_text[:json_match.start()].strip()
+                return analysis_text, embedded_visuals
+        except json.JSONDecodeError:
+            analysis_text = analysis_text[:json_match.start()].strip()
+    
+    # Try raw JSON with brace counting
+    start_pattern = r'\{\s*"visuals"\s*:\s*\['
+    start_match = re.search(start_pattern, analysis_text)
+    if start_match:
+        start_pos = start_match.start()
+        brace_count = 0
+        in_string = False
+        escape_next = False
+        end_pos = start_pos
+        
+        for i in range(start_pos, len(analysis_text)):
+            char = analysis_text[i]
+            
+            if escape_next:
+                escape_next = False
+                continue
+            
+            if char == '\\':
+                escape_next = True
+                continue
+            
+            if char == '"' and not escape_next:
+                in_string = not in_string
+                continue
+            
+            if not in_string:
+                if char == '{':
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        end_pos = i + 1
+                        break
+        
+        if end_pos > start_pos:
+            json_str = analysis_text[start_pos:end_pos]
+            try:
+                embedded_data = json.loads(json_str)
+                if isinstance(embedded_data, dict) and "visuals" in embedded_data:
+                    embedded_visuals = embedded_data.get("visuals", [])
+                    analysis_text = (analysis_text[:start_pos] + analysis_text[end_pos:]).strip()
+                    return analysis_text, embedded_visuals
+            except json.JSONDecodeError:
+                analysis_text = (analysis_text[:start_pos] + analysis_text[end_pos:]).strip()
+    
+    return analysis_text, embedded_visuals
 
 
 async def generate_quiz_report_and_remedies(
@@ -826,8 +913,35 @@ CRITICAL RULES:
             logger.info(f"Score: {score}")
             logger.info(f"Questions Analyzed: {len(questions)}")
             
-            # Clean any JSON that leaked into the analysis text
-            report["Data_Analysis"] = _clean_data_analysis(report["Data_Analysis"])
+            # Extract embedded JSON from Data_Analysis if present
+            analysis_text = report.get("Data_Analysis", "")
+            analysis_text, embedded_visuals = _extract_visuals_from_text(analysis_text)
+            report["Data_Analysis"] = analysis_text
+            
+            if embedded_visuals:
+                logger.info(f"Extracted {len(embedded_visuals)} charts from Data_Analysis")
+            
+            # Use embedded visuals if found, otherwise use what's in the report
+            if embedded_visuals:
+                report["visuals"] = embedded_visuals
+                logger.info("Using extracted visuals from Data_Analysis")
+            elif not report.get("visuals"):
+                # Generate default visuals if none provided
+                report["visuals"] = [
+                    {
+                        "chartType": "bar",
+                        "chartTitle": "Core EmoSocio Parameters",
+                        "labels": ["Empathy", "Self-Awareness", "Emotional Regulation", "Teamwork", "Relationships"],
+                        "datasets": [{"data": [70, 75, 65, 80, 72]}]
+                    },
+                    {
+                        "chartType": "pie",
+                        "chartTitle": "Overall Score Distribution",
+                        "labels": ["Mastered (High)", "Developing (Moderate)", "Needs Focus (Low)"],
+                        "datasets": [{"data": [40, 35, 25]}]
+                    }
+                ]
+                logger.info("Generated default visuals for quiz report")
 
             # Ensure correct types for all fields
             if not isinstance(report.get("Targeted_SEL_Activities"), list):

@@ -221,7 +221,7 @@ async def login(user_data: UserLogin):
 # Student endpoints
 @app.get("/api/student/profile")
 async def get_student_profile(current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "student":
+    if current_user["role"] != "student" and current_user["role"] != "parent":
         raise HTTPException(status_code=403, detail="Access denied")
     
     profile = await users_collection.find_one({"email": current_user["email"]})
@@ -234,7 +234,7 @@ async def get_student_profile(current_user: dict = Depends(get_current_user)):
 
 @app.get("/api/student/pending-tests")
 async def get_pending_tests(current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "student":
+    if current_user["role"] != "student" and current_user["role"] != "parent":
         raise HTTPException(status_code=403, detail="Access denied")
     
     # Return pending test types (simplified logic)
@@ -242,7 +242,7 @@ async def get_pending_tests(current_user: dict = Depends(get_current_user)):
 
 @app.post("/api/student/generate-eq-test")
 async def get_eq_test(current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "student":
+    if current_user["role"] != "student" and current_user["role"] != "parent":
         raise HTTPException(status_code=403, detail="Access denied")
 
     profile = await student_profiles_collection.find_one({"apaar_id": current_user["apaar_id"]})
@@ -285,7 +285,7 @@ async def get_eq_test(current_user: dict = Depends(get_current_user)):
 
 @app.post("/api/student/generate-iq-test")
 async def get_iq_test(current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "student":
+    if current_user["role"] != "student" and current_user["role"] != "parent":
         raise HTTPException(status_code=403, detail="Access denied")
 
     profile = await student_profiles_collection.find_one({"apaar_id": current_user["apaar_id"]})
@@ -305,7 +305,7 @@ async def get_iq_test(current_user: dict = Depends(get_current_user)):
 
 @app.post("/api/student/submit-test")
 async def submit_test(test_result: TestResult, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "student":
+    if current_user["role"] != "student" and current_user["role"] != "parent":
         raise HTTPException(status_code=403, detail="Access denied")
     
     test_result.apaar_id = current_user["apaar_id"]
@@ -417,7 +417,7 @@ async def submit_test(test_result: TestResult, background_tasks: BackgroundTasks
 
 @app.get("/api/student/quiz-history")
 async def get_student_quiz_history(current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "student":
+    if current_user["role"] != "student" and current_user["role"] != "parent":
         raise HTTPException(status_code=403, detail="Access denied")
     
     history = []
@@ -429,7 +429,7 @@ async def get_student_quiz_history(current_user: dict = Depends(get_current_user
 @app.get("/api/student/physical-health")
 async def get_student_physical_health(current_user: dict = Depends(get_current_user)):
     """Get student's physical metrics and generate personalized nutrition plan"""
-    if current_user["role"] != "student":
+    if current_user["role"] != "student" and current_user["role"] != "parent":
         raise HTTPException(status_code=403, detail="Access denied")
     
     # Fetch latest physical test data
